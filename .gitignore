@@ -3,6 +3,9 @@
 /checkpoints/
 *.pth
 
+# Junk files for local stuff
+/junk.ipynb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
