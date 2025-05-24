@@ -14,6 +14,12 @@ from models.AllConv import AllConv
 from models.NiN import NiN
 from models.VGG16 import VGG16
 
+ORIGINAL_ACCS = {
+    'allconv': 85.6,
+    'nin': 87.2,
+    'vgg16': 83.3
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -22,19 +28,17 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--resume', type=str, default=None, help='Path to resume checkpoint')
+    parser.add_argument('--resume_lr', type=float, default=0.01, help='Learning rate for resuming training')
 
     return parser.parse_args()
 
 
 def get_model(model_name, num_classes=10):
-    if model_name == 'allconv':
-        return AllConv(num_classes=num_classes)
-    elif model_name == 'nin':
-        return NiN(num_classes=num_classes)
-    elif model_name == 'vgg16':
-        return VGG16(num_classes=num_classes)
-    else:
-        raise ValueError(f"Unknown model name: {model_name}")
+    return {
+        'allconv': AllConv(num_classes=num_classes),
+        'nin': NiN(num_classes=num_classes),
+        'vgg16': VGG16(num_classes=num_classes)
+    }.get(model_name, None)
 
 
 def get_optimizer(model, model_name, lr) -> optim.Optimizer:
@@ -151,56 +155,88 @@ def load_datasets():
 
 
 def train(model, device, train_loader, test_loader, optimizer, criterion, epochs, model_name, scheduler=None):
+    original_acc_reached = False
     model.train()
     best_acc = 0.0
 
     # Checkpoints
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    checkpoint_dir = f"./checkpoints/{model_name}_{timestamp}"
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    # checkpoint_dir = f"./checkpoints/{model_name}_{timestamp}"
+    # os.makedirs(checkpoint_dir, exist_ok=True)
+    original_acc = ORIGINAL_ACCS[model_name]
 
-    for epoch in range(epochs):
-        train_loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=False)
-        for data, target in train_loop:
-            data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
-            output = model(data)
-            loss = criterion(output, target)
-            loss.backward()
-            optimizer.step()
-            train_loop.set_postfix(loss=loss.item())
+    try:
+        for epoch in range(epochs):
+            train_loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=False)
+            for data, target in train_loop:
+                data, target = data.to(device), target.to(device)
+                optimizer.zero_grad()
+                output = model(data)
+                loss = criterion(output, target)
+                loss.backward()
+                optimizer.step()
+                train_loop.set_postfix(loss=loss.item())
 
-        test_acc = test(model, device, test_loader)
+            test_acc = test(model, device, test_loader)
 
-        # Adjust learning rate if applicable
-        if model_name == 'allconv' and scheduler:
-            scheduler.step(test_acc)
-        elif model_name == 'vgg16' and scheduler:
-            scheduler.step()
+            # Adjust learning rate if applicable
+            if model_name == 'allconv' and scheduler:
+                scheduler.step(test_acc)
+            elif model_name == 'vgg16' and scheduler:
+                scheduler.step()
+            elif model_name == 'nin' and scheduler:
+                scheduler.step()
 
-        # Log test accuracy
-        print(f"Epoch {epoch+1}/{epochs}, Test Accuracy: {test_acc:.2f}%, LR: {optimizer.param_groups[0]['lr']:.5f}")
+            # Log test accuracy
+            print(f"Epoch {epoch+1}/{epochs}, Test Accuracy: {test_acc:.2f}%, LR: {optimizer.param_groups[0]['lr']:.5f}")
 
-        # Save checkpoint every 10 epochs or if best accuracy yet
-        if (epoch + 1) % 10 == 0 or test_acc > best_acc:
-            checkpoint = {
-                'epoch': epoch + 1,
-                'model_state': model.state_dict(),
-                'optimizer_state': optimizer.state_dict(),
-                'scheduler_state': scheduler.state_dict() if scheduler else None,
-                'accuracy': test_acc,
-                'loss': loss.item()
-            }
+            # Save checkpoint once original accuracy is reached
+            # if (epoch + 1) % 10 == 0 or test_acc > best_acc:
+            if not original_acc_reached and test_acc >= original_acc:
+                checkpoint = {
+                    'epoch': epoch + 1,
+                    'model_state': model.state_dict(),
+                    'optimizer_state': optimizer.state_dict(),
+                    'scheduler_state': scheduler.state_dict() if scheduler else None,
+                    'accuracy': test_acc,
+                    'loss': loss.item()
+                }
 
-            # Keep best model
-            if test_acc > best_acc:
-                best_acc = test_acc
-                torch.save(checkpoint, f"{checkpoint_dir}/best_model.pth")
-                print(f"New best model saved with accuracy: {best_acc:.2f}%")
+                torch.save(checkpoint, f"./results/{model_name}_original_acc.pth")
+                print(f"Original accuracy reached: {model_name} - {test_acc:.2f}%")
+                original_acc_reached = True
+                # Keep best model
+                # if test_acc > best_acc:
+                #     best_acc = test_acc
+                #     torch.save(checkpoint, f"{checkpoint_dir}/best_model.pth")
+                #     print(f"New best model saved with accuracy: {best_acc:.2f}%")
 
-            # Periodic checkpoint
-            torch.save(checkpoint, f"{checkpoint_dir}/epoch_{epoch + 1}.pth")
-            print(f"Checkpoint saved for epoch {epoch + 1}")
+                # Periodic checkpoint
+                # torch.save(checkpoint, f"{checkpoint_dir}/epoch_{epoch + 1}.pth")
+                # print(f"Checkpoint saved for epoch {epoch + 1}")
+    except KeyboardInterrupt:
+        print("Training interrupted. Saving current state...")
+        checkpoint = {
+            'epoch': epoch + 1,
+            'model_state': model.state_dict(),
+            'optimizer_state': optimizer.state_dict(),
+            'scheduler_state': scheduler.state_dict() if scheduler else None,
+            'accuracy': test_acc,
+            'loss': loss.item()
+        }
+        torch.save(checkpoint, f"./results/{model_name}_interrupted.pth")
+        print(f"Checkpoint saved for interrupted training at epoch {epoch + 1}")
+    finally:
+        checkpoint = {
+            'epoch': epoch + 1,
+            'model_state': model.state_dict(),
+            'optimizer_state': optimizer.state_dict(),
+            'scheduler_state': scheduler.state_dict() if scheduler else None,
+            'accuracy': test_acc,
+            'loss': loss.item()
+        }
+        torch.save(checkpoint, f"./results/{model_name}_final.pth")
+        print(f"Final checkpoint saved for epoch {epoch + 1}")
 
 
 def test(model, device, test_loader):
@@ -217,7 +253,7 @@ def test(model, device, test_loader):
 
 def main():
     args = parse_args()
-    
+
     # Load Data
     train_set, test_set = load_datasets()
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=2)
@@ -246,7 +282,7 @@ def main():
     elif args.model == 'nin':
         scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer,
-            milestones=[50, 75],
+            milestones=[15, 30, 45],
             gamma=0.1
         )
 
@@ -270,25 +306,25 @@ def main():
     if args.model == 'allconv':
         print("Using ReduceLROnPlateau scheduler")
     elif args.model == 'vgg16':
-        print("Using MultiStepLR scheduler")
+        print("Using MultiStepLR scheduler: [25, 50, 75]")
+    elif args.model == 'nin':
+        print("Using MultiStepLR scheduler: [15, 30, 45]")
 
-        # Reset LR Scheduler
-        if scheduler:
-            scheduler = optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[50, 75],
-                gamma=0.1
-            )
-
+        # # Reset LR Scheduler
+        # if scheduler:
+        #     scheduler = optim.lr_scheduler.MultiStepLR(
+        #         optimizer,
+        #         milestones=[50, 75],
+        #         gamma=0.1
+        #     )
     if args.resume:
         train(model, device, train_loader, test_loader, optimizer, criterion, args.epochs - start_epoch, args.model, scheduler)
     else:
         train(model, device, train_loader, test_loader, optimizer, criterion, args.epochs, args.model, scheduler)
     print("Training complete!")
 
-    # Save the model
-    os.makedirs('./models', exist_ok=True)
-    torch.save(model.state_dict(), f"./models/{args.model}.pth")
+    # # Save the model
+    # torch.save(model.state_dict(), f"./models/{args.model}.pth")
 
 
 if __name__ == "__main__":

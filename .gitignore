@@ -1,4 +1,4 @@
-# Big files - Datasets and trained models
+# Big files - Datasets, trained models and adversarial samples
 /data/
 /checkpoints/
 *.pth
