@@ -7,6 +7,7 @@ import os
 import random
 import io
 import contextlib
+from torchvision.utils import save_image
 
 
 CIFAR_LABELS = (
@@ -139,8 +140,16 @@ def visualize_perturbations(
     else:
         filename = f"img_{idx}_label_{label}.png"
 
+    # Save the pair of images with the information
     plt.savefig(os.path.join(out_dir, filename), bbox_inches="tight")
     plt.close(fig)
+
+    # Save, also, the perturbed image by itself
+    perturbed_out_dir = os.path.join(
+        "data", "images", model_name, class_dir)
+    # os.makedirs(perturbed_out_dir, exist_ok=True)
+    filename = f"{idx}_target_{target_label}.png" if target_label is not None else f"{idx}.png"
+    save_image(perturbed_img, os.path.join(perturbed_out_dir, filename))
 
 
 def save_img_cutmix(

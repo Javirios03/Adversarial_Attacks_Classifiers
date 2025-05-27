@@ -2,6 +2,7 @@ import torch
 # import torch.nn.functional as F
 from torchvision.datasets import CIFAR10
 from torchvision import transforms
+from torchvision.utils import save_image
 import os
 import time
 
@@ -29,6 +30,12 @@ PRETRAINED_MODELS = {
     'conv_vgg16': './results/vgg16.pth',
     'original_vgg16': './results/vgg16_original_acc.pth'
 }
+
+
+def save_original_image(img, label, model_name, idx):
+    path = os.path.join(IMAGES_PATH, model_name, CIFAR_LABELS[label], f'{idx}_original.png')
+    # os.makedirs(os.path.dirname(path), exist_ok=True)
+    save_image(img.cpu(), path)
 
 
 def load_used_indices(model_name) -> set:
@@ -183,6 +190,10 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
 
     for img, label, idx in samples:
         print(f"\n--- Attacking image {idx} (True Label: {label}) ---")
+
+        # Save the original image
+        save_original_image(img, label, model_name, idx)
+
         original_pred = torch.argmax(model(img.unsqueeze(0).to(device)), dim=1).item()
 
         for target_label in range(10):
