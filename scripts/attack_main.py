@@ -118,7 +118,10 @@ def get_valid_images(dataset, model_name, device, num_images=10):
     return valid_images
 
 
-def main(model_name, model_path, n=400, batch_size=100, epochs=100, num_images=10, device='cuda'):
+def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
+    model_path = PRETRAINED_MODELS.get(model_name, None)
+    if model_path is None:
+        raise ValueError(f"Model {model_name} is not recognized. Available models: {list(PRETRAINED_MODELS.keys())}")
     # Load the model
     model = load_model(model_name, model_path, device)
     model.eval()  # Set model to evaluation mode
@@ -189,7 +192,7 @@ def main(model_name, model_path, n=400, batch_size=100, epochs=100, num_images=1
                 # Run attack
                 # start = time.perf_counter()
                 attack = OnePixelAttack(model, img, label, target_label, n=n)
-                perturbed_img, _ = attack.perturb_img(epochs=epochs, d=1, show=False, print_every=10, title=f"One Pixel Attack on {model_name} - {n} pixels")
+                perturbed_img, _ = attack.perturb_img(epochs=epochs, d=1, show=False, print_every=20)
 
                 # attack_time = time.perf_counter()
                 # print(f"Attack time: {attack_time - start:.2f} seconds")
@@ -204,7 +207,13 @@ def main(model_name, model_path, n=400, batch_size=100, epochs=100, num_images=1
                 print(f"Original prediction: {original_pred}, Perturbed prediction: {perturbed_pred}")
 
                 # Visualize perturbations
-                visualize_perturbations(perturbed_img, img, label, model, title=f"True label - {label} ({CIFAR_LABELS[label]}), Target - {target_label} ({CIFAR_LABELS[target_label]})")
+                visualize_perturbations(
+                    perturbed_img, img, label, model,
+                    model_name=model_name,
+                    idx=idx,
+                    target_label=target_label,
+                    perturbed_label=perturbed_pred
+                )
 
                 # visualize_time = time.perf_counter()
                 # print(f"Visualization time: {visualize_time - verify_time:.2f} seconds")
@@ -213,12 +222,12 @@ def main(model_name, model_path, n=400, batch_size=100, epochs=100, num_images=1
 
 if __name__ == "__main__":
     # Example usage
-    model_name = 'AllConv'  # Choose from 'AllConv', 'NiN', 'VGG16'
-    model_path = f'./results/allconv.pth'
+    model_name = 'conv_vgg16'  # Choose from 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16'
+    # model_path = f'./results/allconv.pth'
     n = 400  # Initial population size for DE
-    batch_size = 100
+    # batch_size = 100
     epochs = 100
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # device = 'cpu'
     print(f"Using device: {device}")
-    main(model_name, model_path, n, batch_size, epochs, device)
+    main(model_name, n=n, epochs=epochs, num_images=1, device=device)

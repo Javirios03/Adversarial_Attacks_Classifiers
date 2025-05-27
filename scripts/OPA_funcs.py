@@ -207,7 +207,7 @@ class OnePixelAttack:
         perturbations : Bet perturbations found. Dimensions of each perturbation: [5].
         """
         # Restart the perturbed image buffer (Explained later)
-        self.perturbed_img = self.img.clone()
+        self.perturbed_img = self.img.clone().to(self.device)
 
         # Buffer for the perturbations
         perturbations = []
@@ -229,16 +229,34 @@ class OnePixelAttack:
 
                 # Trigger early stopping for targeted attacks. In order to avoid checking too often, we do so every 5 epochs
                 if self.target_label is not None and i % 5 == 0:
+                    # Find current best perturbation
+                    min_fitness_idx = torch.argmin(self.fitness, dim=0)
+                    best_p = self.population[min_fitness_idx].squeeze()
+                    # Apply it temporarily to check for predictions
+                    current_img = self._add_perturbation(
+                        [best_p], self.perturbed_img
+                    )
+
                     with torch.no_grad():
                         # Obtain class logits for the perturbed image
-                        prob = self.model(
-                            self.perturbed_img.unsqueeze(0)
+                        prob = self.model(current_img.unsqueeze(0)
                         ).squeeze()
-                        # Check if the target class probability is above a threshold
-                        target_prob = F.softmax(prob, dim=0)[self.target_idx].item()
-                        if target_prob > 0.90:
+
+                        if not torch.isnan(prob).any():
+                            # Check if the target class probability is above a threshold
+                            target_prob = F.softmax(prob, dim=0)[self.target_idx].item()
+                            if target_prob > 0.90:
+                                print(
+                                    f"Early stopping at epoch {i} for pixel {j+1} with target probability {target_prob:.2f}"
+                                )
+                                self.perturbed_img = self._add_perturbation(
+                                    [best_p], self.perturbed_img
+                                )
+                                perturbations.append(best_p)
+                                return perturbations
+                        else:
                             print(
-                                f"Early stopping at epoch {i} for pixel {j+1} with target probability {target_prob:.2f}"
+                                f"NaN encountered in probabilities at epoch {i} for pixel {j+1}. Stopping."
                             )
                             break
 
@@ -294,9 +312,9 @@ class OnePixelAttack:
         # Apply perturbations for obtaining the perturbed image
         perturbed_img = self._add_perturbation(perturbations, self.img)
 
-        if show:
-            visualize_perturbations(
-                perturbed_img, self.img, self.label, self.model, title
-            )
+        # if show:
+        #     visualize_perturbations(
+        #         perturbed_img, self.img, self.label, self.model, title
+        #     )
 
         return (perturbed_img, perturbations)

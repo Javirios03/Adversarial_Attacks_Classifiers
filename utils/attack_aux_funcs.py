@@ -87,18 +87,24 @@ def visualize_perturbations(
     img: torch.Tensor,
     label: int,
     model: nn.Module,
-    title=None,
+    model_name: str,
+    idx: int,
+    target_label=None,
+    perturbed_label=None
 ) -> None:
     """
     Saves a figure with the "before and after" of the perturbation.
 
     Parameters
     ----------
-    perturbed_img : Perturbed image. Dimensions: [channels, height, width].
-    img           : Original image. Dimensions: [channels, height, width].
-    label         : Real label of the image.
-    model         : Model used.
-    title         : Title of the figure.
+        - perturbed_img (torch.Tensor): Image with the pixel/s changed (attack result).
+        - img (torch.Tensor): Original image.
+        - label (int): Real label of the image (0-9)
+        - model (nn.Module): Model used.
+        - model_name (str): Name of the model used.
+        - idx (int): Index of the image in the dataset.
+        - target_label (int): Target label for the attack, if applicable.
+        - perturbed_label (int): Actual label achieved (determined by whether the attack was successful or not).
     """
 
     fig, axs = plt.subplots(1, 2, figsize=(14, 8))
@@ -122,10 +128,19 @@ def visualize_perturbations(
     axs[1].set_title("Perturbed Image")  # type: ignore
     plt.subplots_adjust(top=0.8)
 
-    if title is None:
-        title = f"adversarial_attack_{CIFAR_LABELS[label]}"
-    os.makedirs("data/images", exist_ok=True)
-    plt.savefig(f"data/images/{title}.png", bbox_inches="tight")
+    # Save under the correct directory
+    class_dir = CIFAR_LABELS[label]
+    out_dir = os.path.join(
+        "data", "images", model_name, class_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    if target_label is not None:
+        filename = f"img_{idx}_target_{target_label}_achieved_{perturbed_label}.png"
+    else:
+        filename = f"img_{idx}_label_{label}.png"
+
+    plt.savefig(os.path.join(out_dir, filename), bbox_inches="tight")
+    plt.close(fig)
 
 
 def save_img_cutmix(
