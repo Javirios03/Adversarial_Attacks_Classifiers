@@ -5,6 +5,8 @@ from torchvision import transforms
 from torchvision.utils import save_image
 import os
 # import time
+from collections import defaultdict
+import warnings
 
 # Auxiliary scripts
 from scripts.OPA_funcs import OnePixelAttack
@@ -22,19 +24,21 @@ def save_original_image(img, label, model_name, idx):
 
 def load_used_indices(model_name) -> set:
     """
-    Auxiliary function to obtain those indices, corresponding to the images in the test dataset, for which an adversarial attack has already been performed.
+    Auxiliary function to obtain those indices, corresponding to the images in the test dataset, for which an adversarial attack has already been performed, as well as their corresponding labels. This is used to avoid repeating attacks on the same images.
 
     Parameters
         - model_name (str): Name of the model used for the attack. In our case, it can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'
 
     Returns
-        - used_indices (set): Set of indices corresponding to the images in the test dataset for which an adversarial attack has already been performed.
+        - used_indices (set(tuple)): Set of tuples (index, label) corresponding to the images in the test dataset for which an adversarial attack has already been performed.
+            * index (int): Index of the image in the test dataset.
+            * label (int): Label of the image in the test dataset (0-9, which can be converted to its class name using CIFAR_LABELS).
     """
-    if os.path.exists(f'{IMAGES}/{model_name}/used_indices.txt'):
-        with open(f'{IMAGES}/{model_name}/used_indices.txt', 'r') as f:
-            return set(map(int, f.read().splitlines()))
-    else:
+    path = f'{IMAGES}/{model_name}/used_indices.txt'
+    if not os.path.exists(path):
         return set()
+    with open(path, 'r') as f:
+        return set(tuple(map(int, line.strip().split(','))) for line in f.readlines())
 
 
 def save_used_indices(model_name, used_indices):
@@ -43,11 +47,12 @@ def save_used_indices(model_name, used_indices):
 
     Parameters
         - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'
-        - used_indices (set): Set of indices corresponding to the images in the test dataset for which an adversarial attack has already been performed.
+        - used_indices (set(tuple)): Set of tuples (index, label) corresponding to the images in the test dataset for which an adversarial attack has already been performed. Both index and label are integers.
     """
     os.makedirs(IMAGES, exist_ok=True)
-    with open(f'{IMAGES}/{model_name}/used_indices.txt', 'w') as f:
-        f.write('\n'.join(map(str, sorted(used_indices))))
+    path = f'{IMAGES}/{model_name}/used_indices.txt'
+    with open(path, 'w') as f:  # Creates or overwrites the file. Order is guaranteed, since any used_indices contains, by default, the already present indices.
+        f.writelines(f"{idx},{label}\n" for idx, label in sorted(used_indices))
 
 
 def load_model(model_name, model_path, device):
@@ -66,7 +71,7 @@ def load_model(model_name, model_path, device):
         model = MODELS_DICT[model_name]()
     except KeyError:
         raise ValueError(f"Model {model_name} is not recognized. Available models: {list(MODELS_DICT.keys())}")
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     model.to(device)
     return model
 
@@ -80,24 +85,32 @@ def get_valid_images(dataset, model_name, device, num_images=10):
         - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'.
         - device (str): Device to use for computation ('cuda' or 'cpu').
         - num_images (int): Number of images to sample."""
+    if num_images <= 0:
+        warnings.warn("num_images should be greater than 0. Returning an empty list.", UserWarning)
+        return []
+    elif num_images < 10:
+        warnings.warn("num_images is less than 10. Since class diversity is imposed, this may lead to fewer images being selected than requested.", UserWarning)
     model = load_model(model_name, PRETRAINED_MODELS[model_name], device)
     used_indices = load_used_indices(model_name)
     valid_images, attempts_count = [], 0
-    max_attempts = 5*num_images  # Limit attempts to avoid infinite loop
+    class_counts = defaultdict(int)  # To track how many images per class have been selected
+    max_attempts = 10*num_images  # Limit attempts to avoid infinite loop
+    per_class_limit = num_images // 10  # Limit per class to ensure diversity (hard-coded for CIFAR-10)
 
     while len(valid_images) < num_images and attempts_count < max_attempts:
         idx = torch.randint(0, len(dataset), (1,)).item()
-        if idx in used_indices:
+        img, label = dataset[idx]
+        if (idx, label) in used_indices or class_counts[label] >= per_class_limit:
             attempts_count += 1
             continue
 
-        img, label = dataset[idx]
         img = img.to(device)
         with torch.no_grad():
             pred = torch.argmax(model(img.unsqueeze(0)), dim=1).item()
         if pred == label:  # Correct prediction
             valid_images.append((img, label, idx))
-            used_indices.add(idx)
+            used_indices.add((idx, label))
+            class_counts[label] += 1
         attempts_count += 1
 
     if len(valid_images) < num_images:
@@ -215,7 +228,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
 
 if __name__ == "__main__":
     # Example usage
-    model_name = 'conv_vgg16'  # Choose from 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16'
+    model_name = 'original_allconv'  # Choose from 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16'
     # model_path = f'./results/allconv.pth'
     n = 400  # Initial population size for DE
     # batch_size = 100
@@ -223,4 +236,4 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # device = 'cpu'
     print(f"Using device: {device}")
-    main(model_name, n=n, epochs=epochs, num_images=1, device=device)
+    main(model_name, n=n, epochs=epochs, num_images=10, device=device)
