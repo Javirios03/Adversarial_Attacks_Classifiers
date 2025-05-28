@@ -22,29 +22,24 @@ Having cloned the repository, we must go on and install the dependencies:
 
 ## Deployment
 
-
 ## Built With
-
 
 ## Contributing
 
-
 ## Versioning
-
 
 ## Authors
 
-  - **Francisco Javier Ríos** 
+- **Francisco Javier Ríos**
 
 ## License
-
 
 ## Acknowledgments
 
 ## References
+
 <a id="1">[1]</a>
-Su et al. (2019).
+Su et al. (2017).
 One Pixel Attack for Fooling Deep Neural Networks
 _IEEE Transactions on Evolutionary Computation_
 https://arxiv.org/abs/1710.08864
-

@@ -4,36 +4,18 @@ from torchvision.datasets import CIFAR10
 from torchvision import transforms
 from torchvision.utils import save_image
 import os
-import time
-
-# Models
-from models.AllConv import AllConv
-from models.NiN import NiN
-from models.VGG16 import VGG16
+# import time
 
 # Auxiliary scripts
 from scripts.OPA_funcs import OnePixelAttack
 from utils.attack_aux_funcs import visualize_perturbations, CIFAR_LABELS
+from config import IMAGES, MODELS_DICT, PRETRAINED_MODELS
 
-IMAGES_PATH = './data/images'
-MODELS_DICT = {
-    'nin': NiN,
-    'conv_allconv': AllConv,
-    'original_allconv': AllConv,
-    'conv_vgg16': VGG16,
-    'original_vgg16': VGG16
-}
-PRETRAINED_MODELS = {
-    'nin': './results/nin_original_acc.pth',
-    'conv_allconv': './results/allconv.pth',
-    'original_allconv': './results/allconv_original_acc.pth',
-    'conv_vgg16': './results/vgg16.pth',
-    'original_vgg16': './results/vgg16_original_acc.pth'
-}
+# IMAGES_PATH = './data/images'
 
 
 def save_original_image(img, label, model_name, idx):
-    path = os.path.join(IMAGES_PATH, model_name, CIFAR_LABELS[label], f'{idx}_original.png')
+    path = os.path.join(IMAGES, model_name, CIFAR_LABELS[label], f'{idx}_original.png')
     # os.makedirs(os.path.dirname(path), exist_ok=True)
     save_image(img.cpu(), path)
 
@@ -48,8 +30,8 @@ def load_used_indices(model_name) -> set:
     Returns
         - used_indices (set): Set of indices corresponding to the images in the test dataset for which an adversarial attack has already been performed.
     """
-    if os.path.exists(f'{IMAGES_PATH}/{model_name}/used_indices.txt'):
-        with open(f'{IMAGES_PATH}/{model_name}/used_indices.txt', 'r') as f:
+    if os.path.exists(f'{IMAGES}/{model_name}/used_indices.txt'):
+        with open(f'{IMAGES}/{model_name}/used_indices.txt', 'r') as f:
             return set(map(int, f.read().splitlines()))
     else:
         return set()
@@ -63,8 +45,8 @@ def save_used_indices(model_name, used_indices):
         - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'
         - used_indices (set): Set of indices corresponding to the images in the test dataset for which an adversarial attack has already been performed.
     """
-    os.makedirs(IMAGES_PATH, exist_ok=True)
-    with open(f'{IMAGES_PATH}/{model_name}/used_indices.txt', 'w') as f:
+    os.makedirs(IMAGES, exist_ok=True)
+    with open(f'{IMAGES}/{model_name}/used_indices.txt', 'w') as f:
         f.write('\n'.join(map(str, sorted(used_indices))))
 
 

@@ -8,20 +8,7 @@ import random
 import io
 import contextlib
 from torchvision.utils import save_image
-
-
-CIFAR_LABELS = (
-    "airplane",
-    "automobile",
-    "bird",
-    "cat",
-    "deer",
-    "dog",
-    "frog",
-    "horse",
-    "ship",
-    "truck",
-)
+from config import CIFAR_LABELS
 
 
 def _add_information(
@@ -148,7 +135,7 @@ def visualize_perturbations(
     perturbed_out_dir = os.path.join(
         "data", "images", model_name, class_dir)
     # os.makedirs(perturbed_out_dir, exist_ok=True)
-    filename = f"{idx}_target_{target_label}.png" if target_label is not None else f"{idx}.png"
+    filename = f"{idx}_target_{target_label}_achieved_{perturbed_label}.png" if target_label is not None else f"{idx}.png"
     save_image(perturbed_img, os.path.join(perturbed_out_dir, filename))
 
 
