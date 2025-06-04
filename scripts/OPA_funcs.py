@@ -1,9 +1,8 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-import numpy as np
 
-from utils.attack_aux_funcs import visualize_perturbations, normalize_cifar10
+from utils.attack_aux_funcs import normalize_cifar10
 
 
 class OnePixelAttack:
@@ -33,6 +32,7 @@ class OnePixelAttack:
         # Class attributes
         self.n = n
         self.F = 0.5
+        self.CR = 0.9
         self.img = img
         self.perturbed_img = img.clone()
         self.label = label
@@ -41,8 +41,11 @@ class OnePixelAttack:
         self.device = img.device
         self.model = model.to(self.device)
 
-        # Create and evaluate population
-        self.population = torch.rand(n, 5, device=self.device)
+        # Create population of perturbations - There could be more efficient
+        # initializations, but uniform is the one used in the paper
+        self.population = torch.rand(
+            self.n, 5, device=self.device)
+
         self.target_idx = self.target_label if self.target_label is not None else self.label
         self.fitness = self._evaluate_population()
         with torch.no_grad():
@@ -133,14 +136,35 @@ class OnePixelAttack:
         r3 = torch.randint(0, self.n, (self.n,), device=self.device)
 
         # Calculate new generation for each parent
-        candidates = self.population[r1] + self.F * (
+        # candidates = self.population[r1] + self.F * (
+        #     self.population[r2] - self.population[r3]
+        # )
+        # # Ensure correct device
+        # candidates = candidates.to(self.device)
+
+        # # Clamp position values
+        # candidates[:2] = torch.clip(candidates[:2], 0, 1)
+
+        mutant = self.population[r1] + self.F * (
             self.population[r2] - self.population[r3]
         )
-        # Ensure correct device
-        candidates = candidates.to(self.device)
+        # Cross-over
+        crossover_mask = (torch.rand_like(mutant) < self.CR)
+        j_rand = torch.randint(0, 5, (self.n, 1), device=self.device)
+        crossover_mask.scatter_(1, j_rand, True)  # Ensure at least one gene is taken from mutant
+        candidates = torch.where(crossover_mask, mutant, self.population)
 
-        # Clamp position values
-        candidates[:2] = torch.clip(candidates[:2], 0, 1)
+        # Deal with out-of-bounds values: For positions, we clip them to [0, 1]
+        # For RGB values, we resample
+        candidates[:, :2] = torch.clamp(
+            candidates[:, :2], 0.0, 1.0
+        )
+        out_of_bounds_mask = (candidates[:, 2:] < 0.0) | (candidates[:, 2:] > 1.0)
+        candidates[:, 2:] = torch.where(
+            out_of_bounds_mask,
+            torch.rand_like(candidates[:, 2:]),  # Resample RGB values
+            candidates[:, 2:]  # Keep original RGB values
+        )
 
         # Run all epochs until the correct perturbation is found
         perturbed_imgs = torch.stack([
