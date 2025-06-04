@@ -42,9 +42,9 @@ def _add_information(
     with contextlib.redirect_stdout(output):
         print(f"True Label: {real_class}")
         with torch.no_grad():
-            y_pred = F.softmax(model(img.unsqueeze(0)).squeeze(), dim=0)
+            y_pred = F.softmax(model(normalize_cifar10(img.unsqueeze(0)).squeeze()), dim=0)
             y_pred_perturbed = F.softmax(
-                model(perturbed_img.unsqueeze(0)).squeeze(), dim=0
+                model(normalize_cifar10(perturbed_img.unsqueeze(0)).squeeze()), dim=0
             )
 
         original_prediction = CIFAR_LABELS[torch.argmax(y_pred)]

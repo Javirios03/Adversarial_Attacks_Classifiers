@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 
-from utils.attack_aux_funcs import visualize_perturbations
+from utils.attack_aux_funcs import visualize_perturbations, normalize_cifar10
 
 
 class OnePixelAttack:
@@ -23,7 +23,8 @@ class OnePixelAttack:
         Parameters
         ----------
         model : Model used.
-        img   : Original image. Dimensions: [channels, height, width].
+        img   : Original image. Dimensions: [channels, height, width]. In our implementation, img is such that it has been
+        applied only ToTensor transform, i.e., it is not normalized. Thus, it is expected to be in the range [0, 1].
         label : Real label for the image.
         n     : Size of the population.
         target_label : Target label for the attack. If None, it is a non-targeted attack.
@@ -45,7 +46,7 @@ class OnePixelAttack:
         self.target_idx = self.target_label if self.target_label is not None else self.label
         self.fitness = self._evaluate_population()
         with torch.no_grad():
-            prob = self.model(img.unsqueeze(0)).squeeze()
+            prob = self.model(normalize_cifar10(self.img).unsqueeze(0).to(self.device)).squeeze()
         self.historical_fitness = [F.softmax(prob, dim=0)
             [self.target_idx].item()]
 
@@ -114,7 +115,7 @@ class OnePixelAttack:
         ]).to(self.device)
 
         with torch.no_grad():
-            logits = self.model(perturbed_imgs)
+            logits = self.model(normalize_cifar10(perturbed_imgs).to(self.device))
             probs = F.softmax(logits, dim=1)
             # return probs[:, self.label].detach().cpu().unsqueeze(1)
             return probs[:, self.target_idx].unsqueeze(1)
@@ -145,7 +146,7 @@ class OnePixelAttack:
 
         # Calculate the fitness of using this child
         with torch.no_grad():
-            logits = self.model(perturbed_imgs)
+            logits = self.model(normalize_cifar10(perturbed_imgs).to(self.device))
             probs = F.softmax(logits, dim=1)
             new_fitnesses = probs[:, self.target_idx].unsqueeze(1)
 
@@ -230,8 +231,8 @@ class OnePixelAttack:
                 # Trigger early stopping for targeted attacks. In order to avoid checking too often, we do so every 5 epochs
                 if self.target_label is not None and i % 5 == 0:
                     # Find current best perturbation
-                    min_fitness_idx = torch.argmin(self.fitness, dim=0)
-                    best_p = self.population[min_fitness_idx].squeeze()
+                    best_fitness_idx = torch.argmax(self.fitness, dim=0)
+                    best_p = self.population[best_fitness_idx].squeeze()
                     # Apply it temporarily to check for predictions
                     current_img = self._add_perturbation(
                         [best_p], self.perturbed_img
@@ -239,7 +240,8 @@ class OnePixelAttack:
 
                     with torch.no_grad():
                         # Obtain class logits for the perturbed image
-                        prob = self.model(current_img.unsqueeze(0)
+                        prob = self.model(
+                            normalize_cifar10(current_img).unsqueeze(0).to(self.device)
                         ).squeeze()
 
                         if not torch.isnan(prob).any():
@@ -262,8 +264,8 @@ class OnePixelAttack:
 
             # Obtain the pixel of the population that better perturbes the
             # image for j number of perturbations
-            min_fitness_idx = torch.argmin(self.fitness, dim=0)
-            best_p = self.population[min_fitness_idx].squeeze()
+            best_fitness_idx = torch.argmax(self.fitness, dim=0) if self.target_label is not None else torch.argmin(self.fitness, dim=0)
+            best_p = self.population[best_fitness_idx].squeeze()
             # Add the best perturbation to the list
             perturbations.append(best_p)
 

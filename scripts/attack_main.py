@@ -10,8 +10,8 @@ import warnings
 
 # Auxiliary scripts
 from scripts.OPA_funcs import OnePixelAttack
-from utils.attack_aux_funcs import visualize_perturbations, CIFAR_LABELS
-from config import IMAGES, MODELS_DICT, PRETRAINED_MODELS
+from utils.attack_aux_funcs import visualize_perturbations, normalize_cifar10
+from config import IMAGES, MODELS_DICT, PRETRAINED_MODELS, TEST_SET, CIFAR_LABELS
 
 # IMAGES_PATH = './data/images'
 
@@ -108,7 +108,7 @@ def get_valid_images(dataset, model_name, device, num_images=10):
 
         img = img.to(device)
         with torch.no_grad():
-            pred = torch.argmax(model(img.unsqueeze(0)), dim=1).item()
+            pred = torch.argmax(model(normalize_cifar10(img).unsqueeze(0).to(device)), dim=1).item()
         if pred == label:  # Correct prediction
             valid_images.append((img, label, idx))
             used_indices.add((idx, label))
@@ -128,9 +128,11 @@ def save_perturbation(perturbations, model_name, idx, original_label, target_lab
     # Extract components. Assume d=1
     H = W = 32
     best_p = perturbations[0]
+    print(f"Best perturbation: {best_p}, type: {type(best_p)}")
     row, col = int(round(best_p[0].item() * H)), int(round(best_p[1].item() * W))
     rgb = best_p[2:].detach().cpu()
 
+    print(f"Saving perturbation at pixel ({row}, {col}) with RGB values {rgb}")
     payload = {
         'row': row,
         'col': col,
@@ -149,13 +151,6 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
     model.eval()  # Set model to evaluation mode
     print(f"Loaded model: {model_name} from {model_path}")
     print(f"Model architecture: {model}")
-
-    # Load CIFAR-10 dataset
-    test_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-    ])
-    test_dataset = CIFAR10(root='./data', train=False, download=False, transform=test_transform)
 
     # # Obtain a random image and its label
     # idx = int(torch.randint(0, len(test_dataset), (1,)).item())
@@ -200,7 +195,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
     #         print(f"Total time: {visualize_time - start:.2f} seconds")
 
     # Select new images for the attack
-    samples = get_valid_images(test_dataset, model_name, device, num_images=num_images)
+    samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images)
     print(f"Selected {len(samples)} valid images for the attack.")
 
     for img, label, idx in samples:
@@ -209,7 +204,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
         # Save the original image
         save_original_image(img, label, model_name, idx)
 
-        original_pred = torch.argmax(model(img.unsqueeze(0).to(device)), dim=1).item()
+        # original_pred = torch.argmax(model(img.unsqueeze(0).to(device)), dim=1).item()
 
         for target_label in range(10):
             if target_label != label:
@@ -225,12 +220,12 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
 
                 # Verify attack success
                 with torch.no_grad():
-                    perturbed_pred = torch.argmax(model(perturbed_img.unsqueeze(0).to(device)), dim=1).item()
+                    perturbed_pred = torch.argmax(model(normalize_cifar10(perturbed_img).unsqueeze(0).to(device)), dim=1).item()
 
                 # verify_time = time.perf_counter()
                 # print(f"Verification time: {verify_time - attack_time:.2f} seconds")
 
-                print(f"Original prediction: {original_pred}, Perturbed prediction: {perturbed_pred}")
+                print(f"Original prediction: {label}, Perturbed prediction: {perturbed_pred}")
 
                 # Visualize perturbations
                 visualize_perturbations(
@@ -240,6 +235,8 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
                     target_label=target_label,
                     perturbed_label=perturbed_pred
                 )
+
+                print(f"Final perturbation: {perturbations[0]}") 
 
                 # Save perturbation
                 save_perturbation(perturbations, model_name, idx, label, target_label, perturbed_pred)

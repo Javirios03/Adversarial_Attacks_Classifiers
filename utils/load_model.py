@@ -35,6 +35,7 @@ def load_perturbation(file_path: str, img: torch.Tensor) -> torch.Tensor:
     Returns
         - perturbed_img (torch.Tensor): The original image with the perturbation applied.        
     """
+    print(f"Loading perturbation from {file_path}...")
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {file_path} does not exist.")
 
@@ -43,6 +44,7 @@ def load_perturbation(file_path: str, img: torch.Tensor) -> torch.Tensor:
     perturbation = torch.load(file_path, map_location='cpu')
     row = perturbation['row']
     col = perturbation['col']
+    print(f"Perturbing pixel at ({row}, {col}) with RGB values {perturbation['rgb']}")
     p_img[:, row, col] = perturbation['rgb']
     return p_img
 
@@ -59,7 +61,7 @@ def get_model(model_name, checkpoint_path, device: str, num_classes=10):
     except KeyError:
         raise ValueError(f"Model '{model_name}' is not recognized. Available models: {list(MODELS_DICT.keys())}")
 
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     try:
         model.load_state_dict(checkpoint['model_state'])
@@ -99,77 +101,77 @@ def get_accuracy(model):
 
 
 def check_adversarial_samples(model, model_name, label: str, device='cpu'):
-    model_images_directory = os.path.join(IMAGES, model_name, label)
-    if not os.path.exists(model_images_directory):
-        raise FileNotFoundError(f"Directory {model_images_directory} does not exist.")
+    model_directory = os.path.join(IMAGES, model_name, label)
+    if not os.path.exists(model_directory):
+        raise FileNotFoundError(f"Directory {model_directory} does not exist.")
 
-    # List the different images (idx) in the directory if starts with number, not a character
-    images = [f for f in os.listdir(model_images_directory) if f[0].isdigit() and f.endswith('.png')]
-    if not images:
-        raise FileNotFoundError(f"No images found in {model_images_directory}.")
-    images.sort()  # Sort to ensure consistent order
-    print(f"Found {len(images)} images in {model_images_directory}.")
-    print(f"Images: {images}")
+    # List the different .pt files (idx) in the directory, i.e., the perturbations
+    perturbation_files = [f for f in os.listdir(model_directory) if f.endswith('.pt')]
+    if not perturbation_files:
+        raise FileNotFoundError(f"No perturbation files found in {model_directory}.")
+    perturbation_files.sort()  # Sort to ensure consistent order
+    print(f"Found {len(perturbation_files)} images in {model_directory}.")
+    print(f"Images: {perturbation_files}")
 
     # Pass the original image ({idx}_original.png) through the model
-    for image_name in images:
-        idx = image_name.split('_')[0]
-        if 'original' in image_name:
+    for perturbation_file in perturbation_files:
+        idx = perturbation_file.split('_')[0]  # Extract the index from the filename
+        # if 'original' in image_name:
 
-            # Obtain the image in the test set
-            original_image = TEST_SET[int(idx)][0].unsqueeze(0).to(device)
-            original_label = TEST_SET[int(idx)][1]
-            print(f"Original image {idx} label: {original_label}")
+        #     # Obtain the image in the test set
+        #     original_image = TEST_SET[int(idx)][0].unsqueeze(0).to(device)
+        #     original_label = TEST_SET[int(idx)][1]
+        #     print(f"Original image {idx} label: {original_label}")
 
-            # Get the model prediction
-            model.eval()
-            with torch.no_grad():
-                output = model(original_image)
-                pred_label = output.argmax(dim=1).item()
-                print(f"Model prediction for original image {idx}: {pred_label}, original label: {original_label}")
+        #     # Get the model prediction
+        #     model.eval()
+        #     with torch.no_grad():
+        #         output = model(original_image)
+        #         pred_label = output.argmax(dim=1).item()
+        #         print(f"Model prediction for original image {idx}: {pred_label}, original label: {original_label}")
             
-            # Obtain the original image as saved in the directory
-            original_image_path = os.path.join(model_images_directory, image_name)
-            if not os.path.exists(original_image_path):
-                raise FileNotFoundError(f"Image {original_image_path} does not exist.")
-            original_image_saved = TEST_TRANSFORM(Image.open(original_image_path).convert('RGB')).unsqueeze(0).to(device)
-            original_img_unnorm = undo_normalization_cifar10(original_image_saved).squeeze(0)
-            with torch.no_grad():
-                output_saved = model(original_image_saved)
-                pred_label_saved = output_saved.argmax(dim=1).item()
-                print(f"Model prediction for saved original image {idx}: {pred_label_saved}, original label: {original_label}")
-        else:
-            values = image_name.split('_')
-            # Obtain the perturbed image ({idx}_perturbed.png) in the test set
-            perturbed_image = TEST_TRANSFORM(Image.open(os.path.join(model_images_directory, image_name)).convert('RGB')).unsqueeze(0).to(device)
-            perturbed_image_unnorm = undo_normalization_cifar10(perturbed_image).squeeze(0)
-            perturbed_label = int(values[4].split('.')[0])
-            print(f"Perturbed image {idx} label: {perturbed_label}")
-            # Get the model prediction
-            model.eval()
-            with torch.no_grad():
-                output = model(perturbed_image)
-                pred_label = output.argmax(dim=1).item()
-                print(f"Model prediction for perturbed image {idx}: {pred_label}, perturbed label: {perturbed_label}")
+        #     # Obtain the original image as saved in the directory
+        #     original_image_path = os.path.join(model_images_directory, image_name)
+        #     if not os.path.exists(original_image_path):
+        #         raise FileNotFoundError(f"Image {original_image_path} does not exist.")
+        #     original_image_saved = TEST_TRANSFORM(Image.open(original_image_path).convert('RGB')).unsqueeze(0).to(device)
+        #     original_img_unnorm = undo_normalization_cifar10(original_image_saved).squeeze(0)
+        #     with torch.no_grad():
+        #         output_saved = model(original_image_saved)
+        #         pred_label_saved = output_saved.argmax(dim=1).item()
+        #         print(f"Model prediction for saved original image {idx}: {pred_label_saved}, original label: {original_label}")
+        values = perturbation_file.split('_')
+        # Obtain the perturbed image ({idx}_perturbed.png) in the test set
+        # perturbed_image = TEST_TRANSFORM(Image.open(os.path.join(model_images_directory, image_name)).convert('RGB')).unsqueeze(0).to(device)
+        perturbed_image = load_perturbation(os.path.join(model_directory, perturbation_file), TEST_SET[int(idx)][0])
+        # perturbed_image_unnorm = undo_normalization_cifar10(perturbed_image).squeeze(0)
+        perturbed_label = int(values[4].split('.')[0])
+        print(f"Perturbed image {idx} label: {perturbed_label}")
+        # Get the model prediction
+        model.eval()
+        with torch.no_grad():
+            output = model(normalize_cifar10(perturbed_image).unsqueeze(0).to(device))
+            pred_label = output.argmax(1).item()
+            print(f"Model prediction for perturbed image {idx}: {pred_label}, perturbed label: {perturbed_label}")
 
-            # Calculate the difference between the original and perturbed images
-            pixel_diff = (original_img_unnorm - perturbed_image_unnorm).abs()
+        # # Calculate the difference between the original and perturbed images
+        # pixel_diff = (original_img_unnorm - perturbed_image_unnorm).abs()
 
-            # Masking
-            threshold = 1e-4
-            mask = (pixel_diff > threshold).any(dim=0)  # Any channel differs
-            num_changed_pixels = mask.sum().item()
-            print(f"Number of changed pixels in image {idx}: {num_changed_pixels}")
+        # # Masking
+        # threshold = 1e-4
+        # mask = (pixel_diff > threshold).any(dim=0)  # Any channel differs
+        # num_changed_pixels = mask.sum().item()
+        # print(f"Number of changed pixels in image {idx}: {num_changed_pixels}")
 
-            if num_changed_pixels > 1:
-                print(f"Label {perturbed_label} has more than one pixel changed")
-                changed = torch.nonzero(mask)
-                for x, y in changed:
-                    orig_pixel = original_img_unnorm[:, x, y]
-                    perturbed_pixel = perturbed_image_unnorm[:, x, y]
-                    print(f"Pixel changed at ({x.item()}, {y.item()}): "
-                          f"Original: {[round(v.item(), 3) for v in orig_pixel]}, "
-                          f"Perturbed: {[round(v.item(), 3) for v in perturbed_pixel]}")
+        # if num_changed_pixels > 1:
+        #     print(f"Label {perturbed_label} has more than one pixel changed")
+        #     changed = torch.nonzero(mask)
+        #     for x, y in changed:
+        #         orig_pixel = original_img_unnorm[:, x, y]
+        #         perturbed_pixel = perturbed_image_unnorm[:, x, y]
+        #         print(f"Pixel changed at ({x.item()}, {y.item()}): "
+        #                 f"Original: {[round(v.item(), 3) for v in orig_pixel]}, "
+        #                 f"Perturbed: {[round(v.item(), 3) for v in perturbed_pixel]}")
 
 
 if __name__ == '__main__':
@@ -180,7 +182,7 @@ if __name__ == '__main__':
     # get_accuracy(model)
 
     # Check adversarial samples
-    check_adversarial_samples(model, args.model, 'frog', 'cpu')
+    check_adversarial_samples(model, args.model, 'truck', 'cpu')
 
     # How to use this script: 
     # python -m utils.load_model --model conv_allconv --chckpt_path ./results/allconv.pth
