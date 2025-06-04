@@ -22,9 +22,10 @@ BATCH_SIZE = 128
 EPOCHS = 20
 LEARNING_RATE = 0.01
 
+# Data transformations - For adversarial attacks, we do not normalize the images
 TEST_TRANSFORM = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
+        transforms.ToTensor()
+        # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
     ])
 TEST_SET = datasets.CIFAR10(root='./data', train=False, download=False, transform=TEST_TRANSFORM)
 
