@@ -202,7 +202,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
         print(f"\n--- Attacking image {idx} (True Label: {label}) ---")
 
         # Save the original image
-        save_original_image(img, label, model_name, idx)
+        # save_original_image(img, label, model_name, idx)
 
         # original_pred = torch.argmax(model(img.unsqueeze(0).to(device)), dim=1).item()
 
@@ -248,7 +248,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
 
 if __name__ == "__main__":
     # Example usage
-    model_name = 'original_allconv'  # Choose from 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16'
+    model_name = 'nin'  # Choose from 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16'
     # model_path = f'./results/allconv.pth'
     n = 400  # Initial population size for DE
     # batch_size = 100
