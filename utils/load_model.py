@@ -35,18 +35,20 @@ def load_perturbation(file_path: str, img: torch.Tensor) -> torch.Tensor:
     Returns
         - perturbed_img (torch.Tensor): The original image with the perturbation applied.        
     """
-    print(f"Loading perturbation from {file_path}...")
+    # print(f"Loading perturbation from {file_path}...")
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {file_path} does not exist.")
 
     p_img = torch.clone(img)
 
-    perturbation = torch.load(file_path, map_location='cpu')
+    perturbation = torch.load(file_path, map_location='cpu', weights_only=True)
     row = perturbation['row']
     col = perturbation['col']
-    print(f"Perturbing pixel at ({row}, {col}) with RGB values {perturbation['rgb']}")
+
+    # # Clip the row and col to be within the image dimensions - Hardcoded for CIFAR-10
+    # row = max(0, min(row, 31))
+    # col = max(0, min(col, 31))
     p_img[:, row, col] = perturbation['rgb']
-    return p_img
 
 
 def undo_normalization_cifar10(tensor: torch.Tensor) -> torch.Tensor:
@@ -182,7 +184,7 @@ if __name__ == '__main__':
     # get_accuracy(model)
 
     # Check adversarial samples
-    check_adversarial_samples(model, args.model, 'truck', 'cpu')
+    check_adversarial_samples(model, args.model, 'frog', 'cpu')
 
     # How to use this script: 
     # python -m utils.load_model --model conv_allconv --chckpt_path ./results/allconv.pth

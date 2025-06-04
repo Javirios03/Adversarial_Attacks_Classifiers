@@ -128,11 +128,11 @@ def save_perturbation(perturbations, model_name, idx, original_label, target_lab
     # Extract components. Assume d=1
     H = W = 32
     best_p = perturbations[0]
-    print(f"Best perturbation: {best_p}, type: {type(best_p)}")
+    # print(f"Best perturbation: {best_p}, type: {type(best_p)}")
     row, col = int(round(best_p[0].item() * H)), int(round(best_p[1].item() * W))
     rgb = best_p[2:].detach().cpu()
 
-    print(f"Saving perturbation at pixel ({row}, {col}) with RGB values {rgb}")
+    # print(f"Saving perturbation at pixel ({row}, {col}) with RGB values {rgb}")
     payload = {
         'row': row,
         'col': col,
@@ -236,7 +236,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
                     perturbed_label=perturbed_pred
                 )
 
-                print(f"Final perturbation: {perturbations[0]}") 
+                # print(f"Final perturbation: {perturbations[0]}") 
 
                 # Save perturbation
                 save_perturbation(perturbations, model_name, idx, label, target_label, perturbed_pred)

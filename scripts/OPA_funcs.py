@@ -139,6 +139,9 @@ class OnePixelAttack:
         # Ensure correct device
         candidates = candidates.to(self.device)
 
+        # Clamp position values
+        candidates[:2] = torch.clip(candidates[:2], 0, 1)
+
         # Run all epochs until the correct perturbation is found
         perturbed_imgs = torch.stack([
             self._add_perturbation([c], self.perturbed_img) for c in candidates
