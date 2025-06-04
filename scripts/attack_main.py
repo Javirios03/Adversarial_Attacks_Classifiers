@@ -96,6 +96,8 @@ def get_valid_images(dataset, model_name, device, num_images=10):
     class_counts = defaultdict(int)  # To track how many images per class have been selected
     max_attempts = 10*num_images  # Limit attempts to avoid infinite loop
     per_class_limit = num_images // 10  # Limit per class to ensure diversity (hard-coded for CIFAR-10)
+    if per_class_limit == 0:
+        per_class_limit = 1  # Ensure at least one image per class if num_images < 10
 
     while len(valid_images) < num_images and attempts_count < max_attempts:
         idx = torch.randint(0, len(dataset), (1,)).item()
@@ -118,6 +120,24 @@ def get_valid_images(dataset, model_name, device, num_images=10):
 
     save_used_indices(model_name, used_indices)
     return valid_images
+
+
+def save_perturbation(perturbations, model_name, idx, original_label, target_label, perturbed_pred):
+    perturbed_path = os.path.join(IMAGES, model_name, CIFAR_LABELS[original_label], f'{idx}_target_{target_label}_achieved_{perturbed_pred}.pt')
+
+    # Extract components. Assume d=1
+    H = W = 32
+    best_p = perturbations[0]
+    row, col = int(round(best_p[0].item() * H)), int(round(best_p[1].item() * W))
+    rgb = best_p[2:].detach().cpu()
+
+    payload = {
+        'row': row,
+        'col': col,
+        'rgb': rgb,
+    }
+
+    torch.save(payload, perturbed_path)
 
 
 def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
@@ -198,7 +218,7 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
                 # Run attack
                 # start = time.perf_counter()
                 attack = OnePixelAttack(model, img, label, target_label, n=n)
-                perturbed_img, _ = attack.perturb_img(epochs=epochs, d=1, show=False, print_every=20)
+                perturbed_img, perturbations = attack.perturb_img(epochs=epochs, d=1, show=False, print_every=20)
 
                 # attack_time = time.perf_counter()
                 # print(f"Attack time: {attack_time - start:.2f} seconds")
@@ -221,6 +241,9 @@ def main(model_name, n=400, epochs=100, num_images=10, device='cuda'):
                     perturbed_label=perturbed_pred
                 )
 
+                # Save perturbation
+                save_perturbation(perturbations, model_name, idx, label, target_label, perturbed_pred)
+
                 # visualize_time = time.perf_counter()
                 # print(f"Visualization time: {visualize_time - verify_time:.2f} seconds")
                 # print(f"Total time: {visualize_time - start:.2f} seconds")
@@ -236,4 +259,4 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # device = 'cpu'
     print(f"Using device: {device}")
-    main(model_name, n=n, epochs=epochs, num_images=10, device=device)
+    main(model_name, n=n, epochs=epochs, num_images=1, device=device)

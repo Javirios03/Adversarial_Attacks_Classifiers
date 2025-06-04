@@ -11,6 +11,12 @@ from torchvision.utils import save_image
 from config import CIFAR_LABELS
 
 
+def normalize_cifar10(img_tensor: torch.Tensor) -> torch.Tensor:
+    mean = torch.tensor([0.4914, 0.4822, 0.4465], device=img_tensor.device).view(3, 1, 1)
+    std = torch.tensor([0.2470, 0.2435, 0.2616], device=img_tensor.device).view(3, 1, 1)
+    return (img_tensor - mean) / std
+
+
 def _add_information(
     img: torch.Tensor, perturbed_img: torch.Tensor, label: int, model: nn.Module
 ) -> str:
@@ -132,11 +138,11 @@ def visualize_perturbations(
     plt.close(fig)
 
     # Save, also, the perturbed image by itself
-    perturbed_out_dir = os.path.join(
-        "data", "images", model_name, class_dir)
-    # os.makedirs(perturbed_out_dir, exist_ok=True)
-    filename = f"{idx}_target_{target_label}_achieved_{perturbed_label}.png" if target_label is not None else f"{idx}.png"
-    save_image(perturbed_img, os.path.join(perturbed_out_dir, filename))
+    # perturbed_out_dir = os.path.join(
+    #     "data", "images", model_name, class_dir)
+    # # os.makedirs(perturbed_out_dir, exist_ok=True)
+    # filename = f"{idx}_target_{target_label}_achieved_{perturbed_label}.png" if target_label is not None else f"{idx}.png"
+    # save_image(perturbed_img, os.path.join(perturbed_out_dir, filename))
 
 
 def save_img_cutmix(

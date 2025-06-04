@@ -5,6 +5,7 @@ from torch import nn
 import torch
 import argparse
 from config import IMAGES, MODELS_DICT, TEST_SET, TEST_TRANSFORM, CIFAR_LABELS
+from utils.attack_aux_funcs import normalize_cifar10
 import os
 
 from torch.utils.data import DataLoader
@@ -20,6 +21,30 @@ def parse_args():
                         help='Name of the model to load', required=True)
     parser.add_argument('--chckpt_path', type=str, help='Path to the checkpoint file', required=True)
     return parser.parse_args()
+
+
+def load_perturbation(file_path: str, img: torch.Tensor) -> torch.Tensor:
+    """
+    Loads the perturbation from a .pt file. The file must contain the keys 'row', 'col', and 'rgb',
+    which represent the row and column indices of the pixel to be changed, and the RGB values to set.
+
+    Parameters
+        - file_path (str): Path to the .pt file containing the perturbation.
+        - img (torch.Tensor): The original image to which the perturbation will be applied.
+
+    Returns
+        - perturbed_img (torch.Tensor): The original image with the perturbation applied.        
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} does not exist.")
+
+    p_img = torch.clone(img)
+
+    perturbation = torch.load(file_path, map_location='cpu')
+    row = perturbation['row']
+    col = perturbation['col']
+    p_img[:, row, col] = perturbation['rgb']
+    return p_img
 
 
 def undo_normalization_cifar10(tensor: torch.Tensor) -> torch.Tensor:
