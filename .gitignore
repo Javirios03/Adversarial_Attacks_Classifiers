@@ -1,6 +1,7 @@
 # Big files - Datasets, trained models and adversarial samples
 /data/
 /checkpoints/
+/misc/
 *.pth
 
 # Junk files for local stuff

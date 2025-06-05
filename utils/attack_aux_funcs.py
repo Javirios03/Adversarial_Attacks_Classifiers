@@ -1,7 +1,10 @@
+import PIL.Image
 import torch
+import torchvision
 from torch import nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from typing import List, Tuple
 import numpy as np
 import os
 import random
@@ -46,15 +49,22 @@ def save_used_indices(model_name, used_indices):
         f.writelines(f"{idx},{label}\n" for idx, label in sorted(used_indices))
 
 
-def get_valid_images(dataset, model_name, device, num_images=10):
+def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, device: str = 'cpu', num_images=10) -> List[Tuple[torch.Tensor, int, int]]:
     """
     Samples *num_images* images from the provided dataset, such that the model's prediction is correct and the image has not been used in a previous attack.
 
     Parameters
-        - dataset (torch.utils.data.Dataset): Dataset from which to sample images.
+        - dataset (torchvision.datasets.CIFAR10): The dataset from which to sample images. Hard-coded for CIFAR-10.
         - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'.
         - device (str): Device to use for computation ('cuda' or 'cpu').
-        - num_images (int): Number of images to sample."""
+        - num_images (int): Number of images to sample.
+
+    Returns
+        - valid_images (list): List of tuples (img, label, idx) where:
+            * img (torch.Tensor): The image tensor, no normalization applied. In range [0, 1].
+            * label (int): The label of the image (0-9, which can be converted to its class name using CIFAR_LABELS).
+            * idx (int): The index of the image in the dataset.
+    """
     if num_images <= 0:
         warnings.warn("num_images should be greater than 0. Returning an empty list.", UserWarning)
         return []
@@ -76,7 +86,7 @@ def get_valid_images(dataset, model_name, device, num_images=10):
             attempts_count += 1
             continue
 
-        img = img.to(device)
+        img: torch.Tensor = img.to(device)
         with torch.no_grad():
             pred = torch.argmax(model(normalize_cifar10(img).unsqueeze(0).to(device)), dim=1).item()
         if pred == label:  # Correct prediction
