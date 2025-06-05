@@ -2,6 +2,7 @@ from models.AllConv import AllConv
 from models.NiN import NiN
 from models.VGG16 import VGG16
 from torchvision import transforms, datasets
+import torch
 
 CIFAR_LABELS = (
     "airplane",
@@ -23,6 +24,8 @@ EPOCHS = 20
 LEARNING_RATE = 0.01
 
 # Data transformations - For adversarial attacks, we do not normalize the images
+CIFAR_10_MEAN = torch.tensor([0.4914, 0.4822, 0.4465]).view(3, 1, 1)
+CIFAR_10_STD = torch.tensor([0.2470, 0.2435, 0.2616]).view(3, 1, 1)
 TEST_TRANSFORM = transforms.Compose([
         transforms.ToTensor()
         # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
@@ -39,7 +42,7 @@ MODELS_DICT = {
     'original_vgg16': VGG16
 }
 PRETRAINED_MODELS = {
-    'nin': './results/nin_original_acc.pth',
+    'nin': './results/nin.pth',
     'conv_allconv': './results/allconv.pth',
     'original_allconv': './results/allconv_original_acc.pth',
     'conv_vgg16': './results/vgg16.pth',

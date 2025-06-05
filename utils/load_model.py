@@ -108,15 +108,15 @@ def check_adversarial_samples(model, model_name, label: str, device='cpu'):
         raise FileNotFoundError(f"Directory {model_directory} does not exist.")
 
     # List the different .pt files (idx) in the directory, i.e., the perturbations
-    perturbation_files = [f for f in os.listdir(model_directory) if f.endswith('.pt')]
-    if not perturbation_files:
-        raise FileNotFoundError(f"No perturbation files found in {model_directory}.")
-    perturbation_files.sort()  # Sort to ensure consistent order
-    print(f"Found {len(perturbation_files)} images in {model_directory}.")
-    print(f"Images: {perturbation_files}")
+    perturbed_images = [f for f in os.listdir(model_directory) if f.endswith('.png')]
+    if not perturbed_images:
+        raise FileNotFoundError(f"No adversarial images found in {model_directory}.")
+    perturbed_images.sort()  # Sort to ensure consistent order
+    print(f"Found {len(perturbed_images)} images in {model_directory}.")
+    print(f"Images: {perturbed_images}")
 
     # Pass the original image ({idx}_original.png) through the model
-    for perturbation_file in perturbation_files:
+    for perturbation_file in perturbed_images:
         idx = perturbation_file.split('_')[0]  # Extract the index from the filename
         # if 'original' in image_name:
 
@@ -142,19 +142,23 @@ def check_adversarial_samples(model, model_name, label: str, device='cpu'):
         #         output_saved = model(original_image_saved)
         #         pred_label_saved = output_saved.argmax(dim=1).item()
         #         print(f"Model prediction for saved original image {idx}: {pred_label_saved}, original label: {original_label}")
-        values = perturbation_file.split('_')
+        # values = perturbation_file.split('_')
         # Obtain the perturbed image ({idx}_perturbed.png) in the test set
         # perturbed_image = TEST_TRANSFORM(Image.open(os.path.join(model_images_directory, image_name)).convert('RGB')).unsqueeze(0).to(device)
-        perturbed_image = load_perturbation(os.path.join(model_directory, perturbation_file), TEST_SET[int(idx)][0])
+        # perturbed_image = load_perturbation(os.path.join(model_directory, perturbation_file), TEST_SET[int(idx)][0])
+        perturbed_image_path = os.path.join(model_directory, perturbation_file)
+        if not os.path.exists(perturbed_image_path):
+            raise FileNotFoundError(f"Perturbed image {perturbed_image_path} does not exist.")
+        perturbed_image = TEST_TRANSFORM(Image.open(perturbed_image_path).convert('RGB')).to(device)
         # perturbed_image_unnorm = undo_normalization_cifar10(perturbed_image).squeeze(0)
-        perturbed_label = int(values[4].split('.')[0])
-        print(f"Perturbed image {idx} label: {perturbed_label}")
+        # # perturbed_label = int(values[4].split('.')[0])
+        # print(f"Original label for perturbed image {idx}: {label}")
         # Get the model prediction
         model.eval()
         with torch.no_grad():
             output = model(normalize_cifar10(perturbed_image).unsqueeze(0).to(device))
             pred_label = output.argmax(1).item()
-            print(f"Model prediction for perturbed image {idx}: {pred_label}, perturbed label: {perturbed_label}")
+            print(f"Model prediction for perturbed image {idx}: {pred_label}, original label: {label}")
 
         # # Calculate the difference between the original and perturbed images
         # pixel_diff = (original_img_unnorm - perturbed_image_unnorm).abs()
@@ -184,7 +188,7 @@ if __name__ == '__main__':
     # get_accuracy(model)
 
     # Check adversarial samples
-    check_adversarial_samples(model, args.model, 'frog', 'cpu')
+    check_adversarial_samples(model, args.model, 'airplane', 'cpu')
 
     # How to use this script: 
     # python -m utils.load_model --model conv_allconv --chckpt_path ./results/allconv.pth

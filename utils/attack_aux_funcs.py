@@ -7,13 +7,116 @@ import os
 import random
 import io
 import contextlib
-from torchvision.utils import save_image
-from config import CIFAR_LABELS
+import warnings
+from collections import defaultdict
+# from torchvision.utils import save_image
+from config import CIFAR_LABELS, MODELS_DICT, PRETRAINED_MODELS, IMAGES, CIFAR_10_MEAN, CIFAR_10_STD
+
+
+def load_used_indices(model_name) -> set:
+    """
+    Auxiliary function to obtain those indices, corresponding to the images in the test dataset, for which an adversarial attack has already been performed, as well as their corresponding labels. This is used to avoid repeating attacks on the same images.
+
+    Parameters
+        - model_name (str): Name of the model used for the attack. In our case, it can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'
+
+    Returns
+        - used_indices (set(tuple)): Set of tuples (index, label) corresponding to the images in the test dataset for which an adversarial attack has already been performed.
+            * index (int): Index of the image in the test dataset.
+            * label (int): Label of the image in the test dataset (0-9, which can be converted to its class name using CIFAR_LABELS).
+    """
+    path = f'{IMAGES}/{model_name}/used_indices.txt'
+    if not os.path.exists(path):
+        return set()
+    with open(path, 'r') as f:
+        return set(tuple(map(int, line.strip().split(','))) for line in f.readlines())
+
+
+def save_used_indices(model_name, used_indices):
+    """
+    Auxiliary function to save the indices of the images in the test dataset for which an adversarial attack has already been performed. Updates (or creates, if not existant) the file corresponding to the record.
+
+    Parameters
+        - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'
+        - used_indices (set(tuple)): Set of tuples (index, label) corresponding to the images in the test dataset for which an adversarial attack has already been performed. Both index and label are integers.
+    """
+    os.makedirs(IMAGES, exist_ok=True)
+    path = f'{IMAGES}/{model_name}/used_indices.txt'
+    with open(path, 'w') as f:  # Creates or overwrites the file. Order is guaranteed, since any used_indices contains, by default, the already present indices.
+        f.writelines(f"{idx},{label}\n" for idx, label in sorted(used_indices))
+
+
+def get_valid_images(dataset, model_name, device, num_images=10):
+    """
+    Samples *num_images* images from the provided dataset, such that the model's prediction is correct and the image has not been used in a previous attack.
+
+    Parameters
+        - dataset (torch.utils.data.Dataset): Dataset from which to sample images.
+        - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'.
+        - device (str): Device to use for computation ('cuda' or 'cpu').
+        - num_images (int): Number of images to sample."""
+    if num_images <= 0:
+        warnings.warn("num_images should be greater than 0. Returning an empty list.", UserWarning)
+        return []
+    elif num_images < 10:
+        warnings.warn("num_images is less than 10. Since class diversity is imposed, this may lead to fewer images being selected than requested.", UserWarning)
+    model = load_model(model_name, device)
+    used_indices = load_used_indices(model_name)
+    valid_images, attempts_count = [], 0
+    class_counts = defaultdict(int)  # To track how many images per class have been selected
+    max_attempts = 10*num_images  # Limit attempts to avoid infinite loop
+    per_class_limit = num_images // 10  # Limit per class to ensure diversity (hard-coded for CIFAR-10)
+    if per_class_limit == 0:
+        per_class_limit = 1  # Ensure at least one image per class if num_images < 10
+
+    while len(valid_images) < num_images and attempts_count < max_attempts:
+        idx = torch.randint(0, len(dataset), (1,)).item()
+        img, label = dataset[idx]
+        if (idx, label) in used_indices or class_counts[label] >= per_class_limit:
+            attempts_count += 1
+            continue
+
+        img = img.to(device)
+        with torch.no_grad():
+            pred = torch.argmax(model(normalize_cifar10(img).unsqueeze(0).to(device)), dim=1).item()
+        if pred == label:  # Correct prediction
+            valid_images.append((img, label, idx))
+            used_indices.add((idx, label))
+            class_counts[label] += 1
+        attempts_count += 1
+
+    if len(valid_images) < num_images:
+        print(f"Warning: Only {len(valid_images)} valid images found out of {num_images} requested. Consider increasing the dataset size or reducing the number of images requested.")
+
+    # save_used_indices(model_name, used_indices)
+    return valid_images
+
+
+def load_model(model_name, device):
+    """
+    Loads the model specified by model_name and moves it to the specified device.
+
+    Parameters
+        - model_name (str): Name of the model to load. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', or 'original_vgg16'.
+        - device (str): Device to load the model on ('cuda' or 'cpu').
+
+    Returns
+        - model (torch.nn.Module): The loaded model.
+    """
+    try:
+        model = MODELS_DICT[model_name]()
+    except KeyError:
+        raise ValueError(f"Model {model_name} is not recognized. Available models: {list(MODELS_DICT.keys())}")
+    model_path = PRETRAINED_MODELS.get(model_name)
+    if model_path is None:
+        raise ValueError(f"No pre-trained model path found for {model_name}. Please check the configuration.")
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    model.to(device)
+    return model
 
 
 def normalize_cifar10(img_tensor: torch.Tensor) -> torch.Tensor:
-    mean = torch.tensor([0.4914, 0.4822, 0.4465], device=img_tensor.device).view(3, 1, 1)
-    std = torch.tensor([0.2470, 0.2435, 0.2616], device=img_tensor.device).view(3, 1, 1)
+    mean, std = CIFAR_10_MEAN.to(img_tensor.device), CIFAR_10_STD.to(img_tensor.device)
     return (img_tensor - mean) / std
 
 
