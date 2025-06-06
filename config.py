@@ -48,3 +48,14 @@ PRETRAINED_MODELS = {
     'conv_vgg16': './results/vgg16.pth',
     'original_vgg16': './results/vgg16_original_acc.pth'
 }
+
+# Logging for attacks
+FIELDNAMES = [
+    'image_idx',
+    'model_name',
+    'orig_label',
+    'target_label',
+    'adv_pred',
+    'success',
+    'time_per_attack'
+]

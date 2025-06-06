@@ -1,7 +1,7 @@
 import torch
 import torchattacks as ta
 from utils.attack_aux_funcs import normalize_cifar10, visualize_perturbations, load_model, get_valid_images, set_seed
-from config import IMAGES, MODELS_DICT, PRETRAINED_MODELS, TEST_SET, CIFAR_LABELS
+from config import IMAGES, MODELS_DICT, PRETRAINED_MODELS, TEST_SET, CIFAR_LABELS, FIELDNAMES
 from torchvision.utils import save_image
 import time
 from models.NormalizedCIFAR10Model import NormalizedCIFAR10Model
@@ -102,43 +102,51 @@ def main_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_im
     log_path = Path(f'logs/{model_name}_targeted_attack_log.csv')
     log_path.parent.mkdir(exist_ok=True)
     write_header = not log_path.exists()
+    with open(log_path, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        if write_header:
+            writer.writeheader()
 
-    fieldnames = ['image_idx']
+        # Run in batches
+        batch_size = 32
+        for i in range(0, len(attack_tasks), batch_size):
+            batch = attack_tasks[i:i + batch_size]
+            
+            # Prepare batch tensors
+            images = torch.stack([item[0] for item in batch]).to(device)
+            orig_labels = [item[1] for item in batch]
+            target_labels = torch.tensor([item[2] for item in batch], dtype=torch.long).to(device)
+            indices = [item[3] for item in batch]
 
-    # Run in batches
-    batch_size = 100
-    for i in range(0, len(attack_tasks), batch_size):
-        batch = attack_tasks[i:i + batch_size]
-        
-        # Prepare batch tensors
-        images = torch.stack([item[0] for item in batch]).to(device)
-        orig_labels = [item[1] for item in batch]
-        target_labels = torch.tensor([item[2] for item in batch], dtype=torch.long).to(device)
-        indices = [item[3] for item in batch]
+            print(f"Processing batch {i // batch_size + 1}/{(len(attack_tasks) + batch_size - 1) // batch_size} |Size: {len(batch)}")
 
-        print(f"Processing batch {i // batch_size + 1}/{(len(attack_tasks) + batch_size - 1) // batch_size} |Size: {len(batch)}")
+            # Perform the attack
+            start = time.time()
+            adv_images = attack(images, target_labels)
+            elapsed = time.time() - start
 
-        # Perform the attack
-        start = time.time()
-        adv_images = attack(images, target_labels)
-        elapsed = time.time() - start
+            # Predict with adversarial images
+            with torch.no_grad():
+                preds = model(adv_images).argmax(dim=1).cpu().tolist()
 
-        # Predict with adversarial images
-        with torch.no_grad():
-            preds = model(adv_images).argmax(dim=1).cpu().tolist()
+            # Log results
+            logs = []
+            for j in range(len(batch)):
+                logs.append({
+                    'image_idx': indices[j],
+                    'model_name': model_name,
+                    'orig_label': CIFAR_LABELS[orig_labels[j]],
+                    'target_label': CIFAR_LABELS[target_labels[j].item()],
+                    'adv_pred': CIFAR_LABELS[preds[j]],
+                    'success': preds[j] == target_labels[j].item(),
+                    'time_per_attack': round(elapsed / len(batch), 4)  # Average time per image in the batch
+                })
+            writer.writerows(logs)
 
-        # Log results
-        for j in range(len(batch)):
-            orig = CIFAR_LABELS[orig_labels[j]]
-            target = CIFAR_LABELS[target_labels[j].item()]
-            pred = CIFAR_LABELS[preds[j]]
-            success = (preds[j] == target_labels[j].item())
-            print(f"Image {indices[j]}: Original: {orig}, Target: {target}, Predicted: {pred}, Success: {success} | Time: {elapsed:.2f}s | Total time: {time.time() - start:.2f}s")
-
-        # Clean up
-        del adv_images
-        torch.cuda.empty_cache()
-        gc.collect()
+            # Clean up
+            del adv_images
+            torch.cuda.empty_cache()
+            gc.collect()
 
 
 if __name__ == "__main__":
@@ -146,4 +154,4 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     model_name = 'nin'  # Example model name, can be changed to 'conv_allconv', 'original_allconv', etc.
-    main_not_targeted(model_name=model_name, device=device, num_images=10, d=1, epochs=100, n=400)
+    main_targeted(model_name=model_name, device=device, num_images=10, d=1, epochs=100, n=400)
