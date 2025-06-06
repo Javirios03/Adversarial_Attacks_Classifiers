@@ -49,7 +49,7 @@ def save_used_indices(model_name, used_indices):
         f.writelines(f"{idx},{label}\n" for idx, label in sorted(used_indices))
 
 
-def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, device: str = 'cpu', num_images=10) -> List[Tuple[torch.Tensor, int, int]]:
+def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, device: str = 'cpu', num_images=10, force_index=None) -> List[Tuple[torch.Tensor, int, int]]:
     """
     Samples *num_images* images from the provided dataset, such that the model's prediction is correct and the image has not been used in a previous attack.
 
@@ -79,8 +79,11 @@ def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, dev
     if per_class_limit == 0:
         per_class_limit = 1  # Ensure at least one image per class if num_images < 10
 
+    if force_index is not None:
+        return [(dataset[force_index][0].to(device), dataset[force_index][1], force_index)]
     while len(valid_images) < num_images and attempts_count < max_attempts:
-        idx = torch.randint(0, len(dataset), (1,)).item()
+        # Only use the second half of the dataset (Colab used the first half)
+        idx = torch.randint(len(dataset)//2, len(dataset), (1,)).item()
         img, label = dataset[idx]
         if (idx, label) in used_indices or class_counts[label] >= per_class_limit:
             attempts_count += 1
@@ -98,7 +101,7 @@ def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, dev
     if len(valid_images) < num_images:
         print(f"Warning: Only {len(valid_images)} valid images found out of {num_images} requested. Consider increasing the dataset size or reducing the number of images requested.")
 
-    # save_used_indices(model_name, used_indices)
+    save_used_indices(model_name, used_indices)
     return valid_images
 
 

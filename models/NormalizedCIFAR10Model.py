@@ -20,6 +20,5 @@ class NormalizedCIFAR10Model(nn.Module):
         Returns:
             torch.Tensor: Output tensor after normalization and passing through the base model.
         """
-        # Normalize the input
-        x_norm = (x - self.mean) / self.std
-        return self.base_model(x_norm)
+        # return self.base_model(x)
+        return self.base_model((x - self.mean) / self.std)

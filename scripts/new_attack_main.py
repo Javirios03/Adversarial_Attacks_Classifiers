@@ -1,11 +1,13 @@
 import torch
 import torchattacks as ta
-from utils.attack_aux_funcs import normalize_cifar10, visualize_perturbations, load_model, get_valid_images
+from utils.attack_aux_funcs import normalize_cifar10, visualize_perturbations, load_model, get_valid_images, set_seed
 from config import IMAGES, MODELS_DICT, PRETRAINED_MODELS, TEST_SET, CIFAR_LABELS
 from torchvision.utils import save_image
 import time
 from models.NormalizedCIFAR10Model import NormalizedCIFAR10Model
 import gc
+import csv
+from pathlib import Path
 
 
 def main_not_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_images=10):
@@ -20,6 +22,7 @@ def main_not_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', nu
         popsize=n
     )
     attack.set_mode_default()  # Ensure not targeted mode
+    # attack._set_normalization_applied(False)  # Tell the algorithm to apply normalization itself (inputs in [0, 1] range)
 
     samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images)
     print(f"Selected {len(samples)} valid images for the attack.")
@@ -81,59 +84,66 @@ def main_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_im
     )
     attack.set_mode_targeted_by_label()  # Ensure targeted mode
     # The desired target is set in the following function call in the labels argument
+    # attack._set_normalization_applied(False)  # Tell the algorithm to apply normalization itself (inputs in [0, 1] range) - Necessary?
 
-    samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images)
+    samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images)  # For testing purposes, we can force a specific image index (integer)
     print(f"Selected {len(samples)} valid images for the attack.")
 
-    # Obtain the arrays of images, labels, and indices
-    image, _, idx = samples[0]
-    image = image.unsqueeze(0).to(device)
+    attack_tasks = []
+    for img, orig_label, idx in samples:
+        for target_label in range(10):
+            if target_label == orig_label:
+                continue
+            attack_tasks.append((img, orig_label, target_label, idx))
 
-    # labels = torch.tensor(labels).to(device)
-    # idxs = torch.tensor(idxs)
-    # print(f"Images shape: {images.shape}, Labels shape: {labels.shape}")
-    # print(f"Images shape: {images.shape}")
+    print(f"Total attack tasks: {len(attack_tasks)}")
 
-    # Obtain original predictions
-    with torch.no_grad():
-        original_pred = model(image).argmax(dim=1).item()
-    
-    print(f"\nImage {idx}: Original label/prediction: {CIFAR_LABELS[original_pred]}")
+    # Setup Logging
+    log_path = Path(f'logs/{model_name}_targeted_attack_log.csv')
+    log_path.parent.mkdir(exist_ok=True)
+    write_header = not log_path.exists()
 
-    adv_images = []
-    adv_preds = []
+    fieldnames = ['image_idx']
 
-    for label in range(10):
-        if label == original_pred:
-            continue
-    
-        print(f"Trying to change to class {CIFAR_LABELS[label]} ({label})")
-        target_label = torch.tensor([label]).to(device)
+    # Run in batches
+    batch_size = 100
+    for i in range(0, len(attack_tasks), batch_size):
+        batch = attack_tasks[i:i + batch_size]
+        
+        # Prepare batch tensors
+        images = torch.stack([item[0] for item in batch]).to(device)
+        orig_labels = [item[1] for item in batch]
+        target_labels = torch.tensor([item[2] for item in batch], dtype=torch.long).to(device)
+        indices = [item[3] for item in batch]
+
+        print(f"Processing batch {i // batch_size + 1}/{(len(attack_tasks) + batch_size - 1) // batch_size} |Size: {len(batch)}")
+
+        # Perform the attack
         start = time.time()
-        adv_image = attack(image, target_label)  # [N, C, H, W], in our case [N, 3, 32, 32] with N = num_images
-        adv_images.append(adv_image.cpu())
+        adv_images = attack(images, target_labels)
+        elapsed = time.time() - start
 
+        # Predict with adversarial images
         with torch.no_grad():
-            pred = model(adv_image).argmax(dim=1).item()
+            preds = model(adv_images).argmax(dim=1).cpu().tolist()
 
-        adv_preds.append(pred)
+        # Log results
+        for j in range(len(batch)):
+            orig = CIFAR_LABELS[orig_labels[j]]
+            target = CIFAR_LABELS[target_labels[j].item()]
+            pred = CIFAR_LABELS[preds[j]]
+            success = (preds[j] == target_labels[j].item())
+            print(f"Image {indices[j]}: Original: {orig}, Target: {target}, Predicted: {pred}, Success: {success} | Time: {elapsed:.2f}s | Total time: {time.time() - start:.2f}s")
 
         # Clean up
-        del adv_image
+        del adv_images
         torch.cuda.empty_cache()
         gc.collect()
 
-        success = (pred == label)
-        print(f"Done in {time.time() - start:.2f}s | Predicted: {CIFAR_LABELS[pred]} ({pred}) | Success: {success}")
-
-    print(f"\nSummary for image {idx}:")
-    for label, adv_image, pred in zip([i for i in range(10) if i != original_pred], adv_images, adv_preds):
-        success = (pred == label)
-        print(f"Target: {CIFAR_LABELS[label]} ({label}) | Predicted: {CIFAR_LABELS[pred]} ({pred}) | Success: {success}")
-
 
 if __name__ == "__main__":
+    # set_seed(42)  # Set a random seed for reproducibility
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     model_name = 'nin'  # Example model name, can be changed to 'conv_allconv', 'original_allconv', etc.
-    main_targeted(model_name=model_name, device=device, num_images=1, d=1, epochs=100, n=400)
+    main_not_targeted(model_name=model_name, device=device, num_images=10, d=1, epochs=100, n=400)
