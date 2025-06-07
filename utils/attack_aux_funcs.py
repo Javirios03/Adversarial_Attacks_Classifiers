@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from typing import List, Tuple
 import numpy as np
+import pandas as pd
 import os
 import random
 import io
@@ -123,7 +124,15 @@ def load_model(model_name, device):
     model_path = PRETRAINED_MODELS.get(model_name)
     if model_path is None:
         raise ValueError(f"No pre-trained model path found for {model_name}. Please check the configuration.")
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+
+    checkpoint = torch.load(model_path, map_location=device, weights_only=True)
+    try:
+        model.load_state_dict(checkpoint['model_state'])
+    except KeyError:
+        # The checkpoint wasn't saved as a dictionary with model state a key
+        model.load_state_dict(checkpoint)
+    except RuntimeError as e:
+        raise RuntimeError(f"Error loading model state from checkpoint: {e}")
     model.to(device)
     return model
 
@@ -190,6 +199,40 @@ def _add_information(
         )
 
     return output.getvalue()
+
+
+def check_logs(csv_log_path: str) -> None:
+    """
+    Checks the logs in the provided CSV file and provides a statistical summary
+
+    Parameters
+        - csv_log_path (str): Path to the CSV file containing the logs.
+
+    Returns
+        - None: Prints the summary statistics to the console.
+    """
+    df = pd.read_csv(csv_log_path)
+
+    # Obtain total astats
+    total_images = len(df)
+    total_successful_attacks = df['success'].sum()
+    suc_rate = 100 * total_successful_attacks / total_images if total_images > 0 else 0
+
+    print(f"Total images: {total_images}")
+    print(f"Total successful attacks: {total_successful_attacks}")
+    print(f"Success rate: {suc_rate:.2f}%")
+
+    # Obtain stats per class
+    print("\nSuccess rate per original label:")
+    print(df.groupby('orig_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
+
+    print("\nSuccess rate by Target Label:")
+    print(df.groupby('target_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
+
+    # Non-targeted attacks
+    grouped_success = df.groupby('image_idx')['success'].any()
+    non_targeted_success_rate = grouped_success.mean() * 100
+    print(f"\nNon-targeted success rate (at least one success per image): {non_targeted_success_rate:.2f}%")
 
 
 def visualize_perturbations(

@@ -4,8 +4,8 @@
 from torch import nn
 import torch
 import argparse
-from config import IMAGES, MODELS_DICT, TEST_SET, TEST_TRANSFORM, CIFAR_LABELS
-from utils.attack_aux_funcs import normalize_cifar10
+from config import IMAGES, MODELS_DICT, TEST_SET, TEST_TRANSFORM, CIFAR_LABELS, PRETRAINED_MODELS
+from utils.attack_aux_funcs import normalize_cifar10, load_model
 import os
 
 from torch.utils.data import DataLoader
@@ -17,9 +17,8 @@ from PIL import Image
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, choices=['nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16'],
+    parser.add_argument('--model', type=str, choices=['nin', 'conv_allconv', 'original_allconv', 'conv_vgg16', 'original_vgg16', 'allconv_k5', 'allconv_k7'],
                         help='Name of the model to load', required=True)
-    parser.add_argument('--chckpt_path', type=str, help='Path to the checkpoint file', required=True)
     return parser.parse_args()
 
 
@@ -57,25 +56,6 @@ def undo_normalization_cifar10(tensor: torch.Tensor) -> torch.Tensor:
     return tensor * std + mean
 
 
-def get_model(model_name, checkpoint_path, device: str, num_classes=10):
-    try:
-        model = MODELS_DICT[model_name](num_classes=num_classes)
-    except KeyError:
-        raise ValueError(f"Model '{model_name}' is not recognized. Available models: {list(MODELS_DICT.keys())}")
-
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-
-    try:
-        model.load_state_dict(checkpoint['model_state'])
-    except KeyError:
-        # The checkpoint wasn't saved as a dictionary with model state a key
-        model.load_state_dict(checkpoint)
-    except RuntimeError as e:
-        raise RuntimeError(f"Error loading model state from checkpoint: {e}")
-
-    return model
-
-
 def get_accuracy(model):
     """
     Auxiliary function to test a given model on the CIFAR10. The dataset
@@ -92,6 +72,8 @@ def get_accuracy(model):
 
     with torch.no_grad():
         for images, labels in test_loader:
+            # Normalize the images
+            images = normalize_cifar10(images)
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             preds = outputs.argmax(dim=1)
@@ -182,15 +164,13 @@ def check_adversarial_samples(model, model_name, label: str, device='cpu'):
 
 if __name__ == '__main__':
     args = parse_args()
-    model = get_model(args.model, args.chckpt_path, 'cpu')
+    model = load_model(args.model, device='cpu')
 
     # Get the model accuracy
-    # get_accuracy(model)
+    get_accuracy(model)
 
     # Check adversarial samples
-    check_adversarial_samples(model, args.model, 'airplane', 'cpu')
+    # check_adversarial_samples(model, args.model, 'airplane', 'cpu')
 
     # How to use this script: 
-    # python -m utils.load_model --model conv_allconv --chckpt_path ./results/allconv.pth
-
-    # Path must be relative to the root of the project (the one containing scripts, models, utils... folders)
+    # python -m utils.load_model --model conv_allconv

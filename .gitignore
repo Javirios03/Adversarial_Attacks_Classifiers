@@ -2,6 +2,7 @@
 /data/
 /checkpoints/
 /misc/
+/logs/
 *.pth
 
 # Junk files for local stuff

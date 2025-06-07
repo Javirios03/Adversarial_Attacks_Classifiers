@@ -10,12 +10,14 @@ from datetime import datetime
 # from torch.utils.tensorboard import SummaryWriter
 
 # Import all models
-from models.AllConv import AllConv
+from models.AllConv import AllConv, AllConv_K5, AllConv_K7
 from models.NiN import NiN
 from models.VGG16 import VGG16
 
 ORIGINAL_ACCS = {
     'allconv': 85.6,
+    'allconv_k5': 85.6,
+    'allconv_k7': 85.6,
     'nin': 87.2,
     'vgg16': 83.3
 }
@@ -23,7 +25,7 @@ ORIGINAL_ACCS = {
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, choices=['allconv', 'nin', 'vgg16'], required=True, help='Model to train')
+    parser.add_argument('--model', type=str, choices=['allconv', 'nin', 'vgg16', 'allconv_k5', 'allconv_k7'], required=True, help='Model to train')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
@@ -36,13 +38,15 @@ def parse_args():
 def get_model(model_name, num_classes=10):
     return {
         'allconv': AllConv(num_classes=num_classes),
+        'allconv_k5': AllConv_K5(num_classes=num_classes),
+        'allconv_k7': AllConv_K7(num_classes=num_classes),
         'nin': NiN(num_classes=num_classes),
         'vgg16': VGG16(num_classes=num_classes)
     }.get(model_name, None)
 
 
 def get_optimizer(model, model_name, lr) -> optim.Optimizer:
-    if model_name == 'allconv':
+    if model_name == 'allconv' or model_name == 'allconv_k5' or model_name == 'allconv_k7':
         return optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
     elif model_name == 'nin':
         return optim.SGD(model.parameters(),
@@ -180,7 +184,7 @@ def train(model, device, train_loader, test_loader, optimizer, criterion, epochs
             test_acc = test(model, device, test_loader)
 
             # Adjust learning rate if applicable
-            if model_name == 'allconv' and scheduler:
+            if (model_name == 'allconv' or model_name == 'allconv_k5' or model_name == 'allconv_k7') and scheduler:
                 scheduler.step(test_acc)
             elif model_name == 'vgg16' and scheduler:
                 scheduler.step()
@@ -265,7 +269,7 @@ def main():
     print(f"Model: {args.model}, Device: {device}")
     optimizer = get_optimizer(model, args.model, args.lr)
     criterion = nn.CrossEntropyLoss()
-    if args.model == 'allconv':
+    if args.model == 'allconv' or args.model == 'allconv_k5' or args.model == 'allconv_k7':
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='max',
@@ -303,7 +307,7 @@ def main():
 
     # Train
     print(f"Training {args.model.upper()} model...")
-    if args.model == 'allconv':
+    if args.model == 'allconv' or args.model == 'allconv_k5' or args.model == 'allconv_k7':
         print("Using ReduceLROnPlateau scheduler")
     elif args.model == 'vgg16':
         print("Using MultiStepLR scheduler: [25, 50, 75]")
@@ -330,4 +334,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-    # Example to resume: python -m scripts.train --model vgg16 --resume "checkpoints/vgg16_20250504-114620/epoch_   50.pth"
+    # Example to resume: python -m scripts.train --model vgg16 --resume "checkpoints/vgg16_20250504-114620/epoch_50.pth"

@@ -1,4 +1,4 @@
-from models.AllConv import AllConv
+from models.AllConv import AllConv, AllConv_K5, AllConv_K7
 from models.NiN import NiN
 from models.VGG16 import VGG16
 from torchvision import transforms, datasets
@@ -38,6 +38,8 @@ MODELS_DICT = {
     'nin': NiN,
     'conv_allconv': AllConv,
     'original_allconv': AllConv,
+    'allconv_k5': AllConv_K5,
+    'allconv_k7': AllConv_K7,
     'conv_vgg16': VGG16,
     'original_vgg16': VGG16
 }
@@ -45,6 +47,8 @@ PRETRAINED_MODELS = {
     'nin': './results/nin.pth',
     'conv_allconv': './results/allconv.pth',
     'original_allconv': './results/allconv_original_acc.pth',
+    'allconv_k5': './results/allconv_k5_original_acc.pth',
+    'allconv_k7': './results/allconv_k7_original_acc.pth',
     'conv_vgg16': './results/vgg16.pth',
     'original_vgg16': './results/vgg16_original_acc.pth'
 }
