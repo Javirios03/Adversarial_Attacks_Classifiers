@@ -1,10 +1,9 @@
-import PIL.Image
 import torch
 import torchvision
 from torch import nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from typing import List, Tuple
+from typing import List, Tuple, Set
 import numpy as np
 import pandas as pd
 import os
@@ -17,7 +16,7 @@ from collections import defaultdict
 from config import CIFAR_LABELS, MODELS_DICT, PRETRAINED_MODELS, IMAGES, CIFAR_10_MEAN, CIFAR_10_STD
 
 
-def load_used_indices(model_name) -> set:
+def load_used_indices(model_name) -> Set[Tuple[int, int]]:
     """
     Auxiliary function to obtain those indices, corresponding to the images in the test dataset, for which an adversarial attack has already been performed, as well as their corresponding labels. This is used to avoid repeating attacks on the same images.
 
@@ -31,7 +30,7 @@ def load_used_indices(model_name) -> set:
     """
     path = f'{IMAGES}/{model_name}/used_indices.txt'
     if not os.path.exists(path):
-        return set()
+        raise FileNotFoundError(f"File {path} does not exist. No previous indices found for model {model_name}.")
     with open(path, 'r') as f:
         return set(tuple(map(int, line.strip().split(','))) for line in f.readlines())
 
@@ -50,7 +49,7 @@ def save_used_indices(model_name, used_indices):
         f.writelines(f"{idx},{label}\n" for idx, label in sorted(used_indices))
 
 
-def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, device: str = 'cpu', num_images=10, force_index=None) -> List[Tuple[torch.Tensor, int, int]]:
+def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, device: str = 'cpu', num_images=10, base_model=None) -> List[Tuple[torch.Tensor, int, int]]:
     """
     Samples *num_images* images from the provided dataset, such that the model's prediction is correct and the image has not been used in a previous attack.
 
@@ -59,6 +58,7 @@ def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, dev
         - model_name (str): Name of the model used for the attack. It can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'.
         - device (str): Device to use for computation ('cuda' or 'cpu').
         - num_images (int): Number of images to sample.
+        - base_model (str): If provided, the model will only sample images that have been used in the base model's attack and filtered using the get_forced_images function. This is useful for comparing adversarial attacks across different variants of the same model. If None, it will sample images randomly from the dataset.
 
     Returns
         - valid_images (list): List of tuples (img, label, idx) where:
@@ -72,6 +72,7 @@ def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, dev
     elif num_images < 10:
         warnings.warn("num_images is less than 10. Since class diversity is imposed, this may lead to fewer images being selected than requested.", UserWarning)
     model = load_model(model_name, device)
+    model.eval() 
     used_indices = load_used_indices(model_name)
     valid_images, attempts_count = [], 0
     class_counts = defaultdict(int)  # To track how many images per class have been selected
@@ -80,29 +81,137 @@ def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, dev
     if per_class_limit == 0:
         per_class_limit = 1  # Ensure at least one image per class if num_images < 10
 
-    if force_index is not None:
-        return [(dataset[force_index][0].to(device), dataset[force_index][1], force_index)]
-    while len(valid_images) < num_images and attempts_count < max_attempts:
-        # Only use the second half of the dataset (Colab used the first half)
-        idx = torch.randint(len(dataset)//2, len(dataset), (1,)).item()
-        img, label = dataset[idx]
-        if (idx, label) in used_indices or class_counts[label] >= per_class_limit:
-            attempts_count += 1
-            continue
+    if base_model is not None:
+        # If base_model is provided, we will only sample images that have been used in the base model's attack
+        base_used_indices = load_used_indices(base_model)
+        base_indices = {idx for idx, _ in base_used_indices}
 
-        img: torch.Tensor = img.to(device)
-        with torch.no_grad():
-            pred = torch.argmax(model(normalize_cifar10(img).unsqueeze(0).to(device)), dim=1).item()
-        if pred == label:  # Correct prediction
-            valid_images.append((img, label, idx))
-            used_indices.add((idx, label))
-            class_counts[label] += 1
-        attempts_count += 1
+        # Obtain num_images indices from the base model's used indices
+        # such that it hasn't already been used in the current model's attack
+        if len(used_indices) < num_images:
+            warnings.warn(f"Not enough used indices from base model {base_model}. Sampling {len(used_indices)} images instead of {num_images}.", UserWarning)
+            num_images = len(used_indices)
+        # Filter out the used indices that are already in the current model's used indices
+        final_indices = {idx for idx in base_indices if (idx, dataset[idx][1]) not in used_indices}
+        if len(final_indices) < num_images:
+            warnings.warn(f"Not enough valid indices from base model {base_model}. Sampling {len(final_indices)} images instead of {num_images}.", UserWarning)
+            num_images = len(final_indices)
+        
+        # Convert to a list and shuffle
+        final_indices = list(final_indices)
+        random.shuffle(final_indices)
+        # Sample images from the final indices
+
+        while len(valid_images) < num_images and attempts_count < max_attempts:
+            # Choose a random index from the final indices
+            idx = final_indices.pop() if final_indices else None
+            if idx is None or class_counts[dataset[idx][1]] >= per_class_limit:
+                attempts_count += 1
+                continue
+            
+            # We know these indices are valid
+            valid_images.append((dataset[idx][0], dataset[idx][1], idx))
+            used_indices.add((idx, dataset[idx][1]))
+            class_counts[dataset[idx][1]] += 1
+    else:
+        while len(valid_images) < num_images and attempts_count < max_attempts:
+            # Only use the second half of the dataset (Colab used the first half)
+            idx = torch.randint(len(dataset)//2, len(dataset), (1,)).item()
+            img, label = dataset[idx]
+            if (idx, label) in used_indices or class_counts[label] >= per_class_limit:
+                attempts_count += 1
+                continue
+
+            img: torch.Tensor = img.to(device)
+            with torch.no_grad():
+                pred = torch.argmax(model(normalize_cifar10(img).unsqueeze(0).to(device)), dim=1).item()
+            if pred == label:  # Correct prediction
+                valid_images.append((img, label, idx))
+                used_indices.add((idx, label))
+                class_counts[label] += 1
+            attempts_count += 1
 
     if len(valid_images) < num_images:
         print(f"Warning: Only {len(valid_images)} valid images found out of {num_images} requested. Consider increasing the dataset size or reducing the number of images requested.")
 
     save_used_indices(model_name, used_indices)
+    return valid_images
+
+
+def get_forced_images(dataset: torchvision.datasets.CIFAR10, model_names: List[str], base_model_name: str, device: str = 'cpu', num_images=10) -> List[Tuple[torch.Tensor, int, int]]:
+    """
+    Samples images from the provided dataset based on specific indices, ensuring that the model's prediction is correct.
+
+    Parameters
+        - dataset (torchvision.datasets.CIFAR10): The dataset from which to sample images. Hard-coded for CIFAR-10.
+        - model_names (List[str]): List of model names to match the images. Each model name should correspond to a pre-trained model in the MODELS_DICT.
+        - base_model_name (str): Name of the base model used for the attack. It can be 'original_allconv' or 'original_vgg16'
+        - device (str): Device to use for computation ('cuda' or 'cpu').
+        - num_images (int): Number of images to sample. It should be a multiple of 10 to ensure class diversity.
+
+    Returns
+        - valid_images (list): List of tuples (img, label, idx) where:
+            * img (torch.Tensor): The image tensor, no normalization applied. In range [0, 1].
+            * label (int): The label of the image (0-9, which can be converted to its class name using CIFAR_LABELS).
+            * idx (int): The index of the image in the dataset.
+    """
+    per_class_limit = num_images // 10  # Limit per class to ensure diversity (hard-coded for CIFAR-10)
+    class_counts = defaultdict(int)  # To track how many images per class have been selected
+    valid_images = []
+
+    # Laod base model used indices
+    base_indeces = load_used_indices(base_model_name)
+    # Omit the labels
+    index_list = [idx for idx, _ in base_indeces]
+
+    # Load and set to evaluation mode the models
+    models = []
+    for name in model_names:
+        model = load_model(name, device)
+        model.eval()  # Set model to evaluation mode
+        models.append(model)
+
+    for idx in index_list:
+        img, label = dataset[idx]
+        if class_counts[label] >= per_class_limit:
+            print(f"Skipping image at index {idx} as it exceeds the per-class limit for label {label}.")
+            continue
+
+        img_tensor: torch.Tensor = img.to(device)
+        norm_img = normalize_cifar10(img_tensor).unsqueeze(0).to(device)
+
+        # Check prediction agreement across all models
+        correct_for_all = True
+        with torch.no_grad():
+            for model in models:
+                pred = model(norm_img).argmax(dim=1).item()
+                if pred != label:
+                    correct_for_all = False
+                    break
+
+        if correct_for_all:
+            valid_images.append((img, label, idx))
+            class_counts[label] += 1
+
+        if len(valid_images) >= num_images:
+            break
+
+    # Only go on if class diversity is satisfied
+    if len(valid_images) < num_images:
+        print(f"Warning: Not enough valid images found. Found {len(valid_images)} out of {num_images} requested. Consider increasing the dataset size or reducing the number of images requested.")
+        return valid_images
+    # Check that all keys in the dictionary have the same value
+    if not all(count == per_class_limit for count in class_counts.values()):
+        print(f"Warning: Not all classes have the same number of images. Found {class_counts} for {num_images} requested images. Consider increasing the dataset size or reducing the number of images requested.")
+        return valid_images
+
+    # Export the correct indices to forced_images.txt
+    forced_images_path = os.path.join(IMAGES, base_model_name, 'forced_indices.txt')
+    os.makedirs(os.path.dirname(forced_images_path), exist_ok=True)
+    with open(forced_images_path, 'w') as f:
+        for _, label, idx in valid_images:
+            f.write(f"{idx},{label}\n")
+
     return valid_images
 
 
@@ -201,12 +310,13 @@ def _add_information(
     return output.getvalue()
 
 
-def check_logs(csv_log_path: str) -> None:
+def check_logs(csv_log_path: str, get_advanced_stats=False) -> None:
     """
     Checks the logs in the provided CSV file and provides a statistical summary
 
     Parameters
         - csv_log_path (str): Path to the CSV file containing the logs.
+        - get_advanced_stats (bool): If True, prints additional statistics such as success rate per class and non-targeted attack success rate.
 
     Returns
         - None: Prints the summary statistics to the console.
@@ -222,17 +332,18 @@ def check_logs(csv_log_path: str) -> None:
     print(f"Total successful attacks: {total_successful_attacks}")
     print(f"Success rate: {suc_rate:.2f}%")
 
-    # Obtain stats per class
-    print("\nSuccess rate per original label:")
-    print(df.groupby('orig_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
-
-    print("\nSuccess rate by Target Label:")
-    print(df.groupby('target_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
-
     # Non-targeted attacks
     grouped_success = df.groupby('image_idx')['success'].any()
     non_targeted_success_rate = grouped_success.mean() * 100
-    print(f"\nNon-targeted success rate (at least one success per image): {non_targeted_success_rate:.2f}%")
+    print(f"Non-targeted success rate (at least one success per image): {non_targeted_success_rate:.2f}%")
+
+    if get_advanced_stats:
+    # Obtain stats per class
+        print("\nSuccess rate per original label:")
+        print(df.groupby('orig_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
+
+        print("\nSuccess rate by Target Label:")
+        print(df.groupby('target_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
 
 
 def visualize_perturbations(
