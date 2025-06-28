@@ -3,7 +3,7 @@
 /checkpoints/
 /misc/
 /logs/
-*.pth
+*.pth filter=lfs diff=lfs merge=lfs
 
 # Junk files for local stuff
 /junk.ipynb
