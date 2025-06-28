@@ -1,1 +1,0 @@
-- Qué pasaría si aplicamos fine-tuning a los modelos con las mismas imágenes que atacan con éxito, pero dándole las labels correctas?

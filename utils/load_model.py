@@ -167,7 +167,7 @@ if __name__ == '__main__':
     model = load_model(args.model, device='cpu')
 
     # Get the model accuracy
-    get_accuracy(model)
+    # get_accuracy(model)
 
     # Check adversarial samples
     # check_adversarial_samples(model, args.model, 'airplane', 'cpu')

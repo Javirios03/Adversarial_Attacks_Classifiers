@@ -69,11 +69,11 @@ def main_not_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', nu
     # #     save_image(adv_img.cpu(), f"{IMAGES}/{model_name}/{CIFAR_LABELS[label]}/{idx}_adv.png")
 
 
-def main_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_images=10):
+def main_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_images=10, base_model=None):
     """
     Perform a targeted adversarial attack on CIFAR-10 images using the OnePixel attack. Restricted, for now, to one image (9 attacks therefore)"""
-    base_model = load_model(model_name, device)
-    model = NormalizedCIFAR10Model(base_model).to(device)
+    model = load_model(model_name, device)
+    model = NormalizedCIFAR10Model(model).to(device)
     model.eval()
     # No need to specify F or CR since ta.OnePixel is a direct implementation of the paper's method
     attack = ta.OnePixel(
@@ -86,7 +86,12 @@ def main_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_im
     # The desired target is set in the following function call in the labels argument
     # attack._set_normalization_applied(False)  # Tell the algorithm to apply normalization itself (inputs in [0, 1] range) - Necessary?
 
-    samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images)  # For testing purposes, we can force a specific image index (integer)
+    if base_model is not None:
+        samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images, base_model=base_model)
+        print(f"Using variant of model while forcing indeces to be contained in those of {base_model}.")
+    else:
+        print(f"Using model {model_name} without forcing indeces.")
+        samples = get_valid_images(TEST_SET, model_name, device, num_images=num_images)
     print(f"Selected {len(samples)} valid images for the attack.")
 
     attack_tasks = []
@@ -150,7 +155,6 @@ def main_targeted(model_name: str, d=1, epochs=100, n=400, device='cuda', num_im
 
 
 if __name__ == "__main__":
-    # set_seed(42)  # Set a random seed for reproducibility
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
     model_name = 'nin'  # Example model name, can be changed to 'conv_allconv', 'original_allconv', etc.

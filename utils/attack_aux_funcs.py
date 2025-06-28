@@ -16,19 +16,23 @@ from collections import defaultdict
 from config import CIFAR_LABELS, MODELS_DICT, PRETRAINED_MODELS, IMAGES, CIFAR_10_MEAN, CIFAR_10_STD
 
 
-def load_used_indices(model_name) -> Set[Tuple[int, int]]:
+def load_used_indices(model_name, desired_file=None) -> Set[Tuple[int, int]]:
     """
     Auxiliary function to obtain those indices, corresponding to the images in the test dataset, for which an adversarial attack has already been performed, as well as their corresponding labels. This is used to avoid repeating attacks on the same images.
 
     Parameters
         - model_name (str): Name of the model used for the attack. In our case, it can be 'nin', 'conv_allconv', 'original_allconv', 'conv_vgg16' or  'original_vgg16'
+        - desired_file (str, optional): If provided, the function will load the indices from the specified file instead of the default one. This is useful for testing purposes or if you want to load indices from a different model or dataset. It is designed to be a file present in the IMAGES/{model_name} directory, where {model_name} is the name of the model used for the attack.
 
     Returns
         - used_indices (set(tuple)): Set of tuples (index, label) corresponding to the images in the test dataset for which an adversarial attack has already been performed.
             * index (int): Index of the image in the test dataset.
             * label (int): Label of the image in the test dataset (0-9, which can be converted to its class name using CIFAR_LABELS).
     """
-    path = f'{IMAGES}/{model_name}/used_indices.txt'
+    if desired_file is not None:
+        path = os.path.join(IMAGES, model_name, desired_file)
+    else:
+        path = f'{IMAGES}/{model_name}/used_indices.txt'
     if not os.path.exists(path):
         raise FileNotFoundError(f"File {path} does not exist. No previous indices found for model {model_name}.")
     with open(path, 'r') as f:
@@ -83,14 +87,14 @@ def get_valid_images(dataset: torchvision.datasets.CIFAR10, model_name: str, dev
 
     if base_model is not None:
         # If base_model is provided, we will only sample images that have been used in the base model's attack
-        base_used_indices = load_used_indices(base_model)
+        base_used_indices = load_used_indices(base_model, desired_file='forced_indices.txt')
         base_indices = {idx for idx, _ in base_used_indices}
 
         # Obtain num_images indices from the base model's used indices
         # such that it hasn't already been used in the current model's attack
-        if len(used_indices) < num_images:
+        if len(base_indices) < num_images:
             warnings.warn(f"Not enough used indices from base model {base_model}. Sampling {len(used_indices)} images instead of {num_images}.", UserWarning)
-            num_images = len(used_indices)
+            num_images = len(base_indices)
         # Filter out the used indices that are already in the current model's used indices
         final_indices = {idx for idx in base_indices if (idx, dataset[idx][1]) not in used_indices}
         if len(final_indices) < num_images:
@@ -344,6 +348,31 @@ def check_logs(csv_log_path: str, get_advanced_stats=False) -> None:
 
         print("\nSuccess rate by Target Label:")
         print(df.groupby('target_label')['success'].mean().mul(100).round(2).sort_values(ascending=False))
+
+
+def filter_log_by_forced_indices(model_names: List[str], logs_dir: str = './logs', data_dir: str = './data/images') -> None:
+    """
+    Filters the logs for each model in model_names based on the forced indices from the base model and saves the filtered logs to the specified output directories.
+
+    Parameters
+        - model_names (List[str]): List of model names to filter logs for.
+        - logs_dir (str): Directory where the logs are stored. Default is './logs'.
+        - data_dir (str): Directory where the forced indices are stored. Default is './data/images'.
+    """
+    for model_name in model_names:
+        # Define paths
+        log_path = os.path.join(logs_dir, f"{model_name}_targeted_attack_log.csv")
+        forced_indices_path = os.path.join(data_dir, model_name, 'forced_indices.txt')
+        out_path = os.path.join(logs_dir, f"{model_name}_filtered_log.csv")
+
+        with open(forced_indices_path, 'r') as f:
+            forced_indices = set(int(line.strip().split(',')[0]) for line in f.readlines() if line.strip())
+
+        # Load the log file
+        df = pd.read_csv(log_path)
+        filtered_df = df[df['image_idx'].isin(forced_indices)]
+        # Save the filtered log
+        filtered_df.to_csv(out_path, index=False)
 
 
 def visualize_perturbations(
