@@ -14,11 +14,8 @@ This repository contains all the code, pretrained weights and supporting materia
 | `/models/`                                 | Models' source code (PyTorch)                       |
 | `/figures/`                                | Graphs exported from the thesis for quick reference            |
 | `/docs/`                                   | Additional documentation – incl. the models' structure as layered in torchsummary |
-
 | `/misc/`                                 | Other scripts used during the project                       |
-
 | `/pretrained_models/`                                 | Pre-trained weights tracked with Git LFS                       |
-
 | `/utils/`                                 | Auxiliary methods used in the attack and training (Python)                       |
 | `TFG - Ríos Montes, Francisco Javier.pdf` | Full thesis (root for citation convenience)                    |
 
