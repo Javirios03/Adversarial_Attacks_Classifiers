@@ -78,9 +78,8 @@ If Git LFS is not an option for you, each weight file can also be downloaded fro
 | VGG‑16 | baseline      | 83.3            | 7.48 %           | 41 %             |
 | AllConv | + accuracy    | **89.96** | 2.83 %           | 20 %             |
 | VGG‑16 | + accuracy    | **89.66** | 6.22 %           | 33.5 %           |
-| AllConv | k = 3 (REF) | –              | 3.06 %           | 22 %             |
-| AllConv | k = 5       | –              | 3.78 %           | 24.5 %           |
-| AllConv | k = 7       | –              | 5.00 %           | 31 %             |
+| AllConv | k = 5       | 85.6              | 3.78 %           | 24.5 %           |
+| AllConv | k = 7       | 85.6              | 5.00 %           | 31 %             |
 
 ### Key take‑aways
 
