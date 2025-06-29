@@ -327,11 +327,11 @@ def main():
         train(model, device, train_loader, test_loader, optimizer, criterion, args.epochs, args.model, scheduler)
     print("Training complete!")
 
-    # # Save the model
-    # torch.save(model.state_dict(), f"./models/{args.model}.pth")
+    # Save the model
+    torch.save(model.state_dict(), f"./models/{args.model}.pth")
 
 
 if __name__ == "__main__":
     main()
 
-    # Example to resume: python -m scripts.train --model vgg16 --resume "checkpoints/vgg16_20250504-114620/epoch_50.pth"
+    # Example to resume: python -m src.train --model vgg16 --resume "checkpoints/vgg16_20250504-114620/epoch_50.pth"

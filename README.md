@@ -2,7 +2,7 @@
 
 > **Bachelor thesis project – Francisco Javier Ríos Montes (ICAI, 2025)**
 
-This repository contains all the code, pretrained weights and supporting material used in the thesis *“Robustness of Classifiers against Targeted Attacks with One-Pixel Attack”*. The project reproduces – and extends – the original One-Pixel Attack (OPA) and analyses how model accuracy and receptive-field size affect adversarial robustness on CIFAR-10 CNN classifiers.
+This repository contains all the code, pretrained weights and supporting material used in the thesis *“Robustness of Classifiers against Targeted Attacks with One-Pixel Attack”*. The project reproduces – and extends – the original One-Pixel Attack (OPA) and analyzes how model accuracy and receptive-field size affect adversarial robustness on CIFAR-10 CNN classifiers.
 
 ---
 
@@ -11,13 +11,13 @@ This repository contains all the code, pretrained weights and supporting materia
 | Path                                         | Purpose                                                        |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | `/src/`                                    | Training & attack source code (Python)                         |
-| `/models/`                                 | Pre-trained weights tracked with Git LFS                       |
-| `/notebooks/`                              | Jupyter notebooks for exploratory work / visualisation         |
+| `/models/`                                 | Models' source code (PyTorch)                       |
 | `/figures/`                                | Graphs exported from the thesis for quick reference            |
-| `/docs/`                                   | Additional documentation – incl. this README & the thesis PDF |
+| `/docs/`                                   | Additional documentation – incl. the models' structure as layered in torchsummary |
+| `/misc/`                                 | Other scripts used during the project                       |
+| `/pretrained_models/`                                 | Pre-trained weights tracked with Git LFS                       |
+| `/utils/`                                 | Auxiliary methods used in the attack and training (Python)                       |
 | `TFG - Ríos Montes, Francisco Javier.pdf` | Full thesis (root for citation convenience)                    |
-
-*The original folder structure is preserved; the new folders above are **additions** only.*
 
 ---
 
@@ -27,38 +27,27 @@ This repository contains all the code, pretrained weights and supporting materia
 # 1  Clone & install (Python ≥3.10 recommended)
 $ git clone https://github.com/Javirios03/Adversarial_Attacks_Classifiers.git
 $ cd Adversarial_Attacks_Classifiers
-$ pip install -r requirements.txt            # will be uploaded separately
+$ pip install -r requirements.txt
 
 # 2  Initialise Git LFS (needed for >100 MB weights)
 $ git lfs install
-$ git lfs pull                                # fetches *.pth files in /models/
+$ git lfs pull                                # fetches *.pth files in /pretrained_models/
 
-# 3  Download CIFAR-10 automatically on first use
+# 3  If not present, change the required arguments in the train script to download the CIFAR-10 dataset
 
-# 4  Run an example attack (untargeted AllConv baseline)
-$ python src/attack.py \
-        --model allconv_baseline \
-        --weights models/allconv_baseline.pth \
-        --mode untargeted
+# 4  Run an example attack (targeted AllConv baseline)
+# If aiming at using untargeted attacks, the \main\ must be changed to call the desired function
+# The model to attack must be provided inside the script manually
+$ python src/attack.py
 ```
 
 ### 2.1  Training from scratch
 
 ```bash
-$ python src/train.py --model allconv --epochs 150 --save models/allconv_custom.pth
+$ python src/train.py --model allconv --epochs 150 --batch_size 128 --lr 0.001
 ```
 
-Training logs and checkpoints are saved under `/results/` by default.
-
-### 2.2  Reproducing thesis figures
-
-All plotting scripts live in `src/visualisation/` and read experiment logs created by `train.py` / `attack.py`. Run e.g.
-
-```bash
-$ python src/visualisation/plot_success_rates.py --logdir results/allconv_baseline
-```
-
----
+Training logs and checkpoints are saved under `/results/` by default (must be created by the user).
 
 ## 3  Pre-trained weights (Git LFS)
 
